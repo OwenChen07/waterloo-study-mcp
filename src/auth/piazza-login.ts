@@ -1,4 +1,4 @@
-import { authenticateInBrowser } from "./browser-login.js";
+import { authenticatePiazzaThroughLearn } from "./browser-login.js";
 
-const sessionPath = await authenticateInBrowser("piazza");
+const sessionPath = await authenticatePiazzaThroughLearn();
 console.log(`Piazza session saved locally at ${sessionPath}`);

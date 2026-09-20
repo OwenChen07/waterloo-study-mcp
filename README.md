@@ -33,6 +33,8 @@ npm run auth:piazza
 npm run auth:status
 ```
 
+`auth:piazza` intentionally starts inside your authenticated LEARN session. Open a current course and click its Piazza external-tool link to complete Waterloo's LTI launch; generic Piazza sign-in may not offer a Waterloo option. Only Piazza-domain session data is saved to the Piazza session file.
+
 These sessions are not yet used by MCP tools. They are the authentication foundation for the upcoming read-only LEARN and Piazza providers. A session can expire or be revoked at any time; rerun the matching login command when that happens.
 
 ## Available tools
