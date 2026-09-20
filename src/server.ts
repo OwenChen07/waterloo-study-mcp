@@ -28,7 +28,7 @@ export function createStudyServer(provider: StudyProvider): McpServer {
   );
 
   server.tool("piazza_list_courses", "List fictional Piazza courses.", async () =>
-    asText(await provider.listCourses()),
+    asText(await provider.listPiazzaCourses()),
   );
 
   server.tool(

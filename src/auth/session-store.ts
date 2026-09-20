@@ -1,4 +1,4 @@
-import { chmod, mkdir, stat } from "node:fs/promises";
+import { chmod, mkdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -34,4 +34,55 @@ export async function sessionExists(service: AuthService): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+type StoredCookie = {
+  name?: unknown;
+  value?: unknown;
+  domain?: unknown;
+  expires?: unknown;
+};
+
+type StoredSession = { cookies?: unknown };
+
+function matchesHost(cookieDomain: string, host: string): boolean {
+  const normalizedDomain = cookieDomain.replace(/^\./, "").toLowerCase();
+  const normalizedHost = host.toLowerCase();
+  return normalizedHost === normalizedDomain || normalizedHost.endsWith(`.${normalizedDomain}`);
+}
+
+/**
+ * Creates a Cookie header from the local Playwright storage state. Cookie values
+ * are intentionally returned only to an outbound request, never logged.
+ */
+export async function getSessionCookieHeader(service: AuthService, host: string): Promise<string> {
+  const path = getSessionPath(service);
+  let state: StoredSession;
+  try {
+    state = JSON.parse(await readFile(path, "utf8")) as StoredSession;
+  } catch {
+    throw new Error(`No ${service} session found. Run \`npm run auth:${service}\` first.`);
+  }
+
+  if (!Array.isArray(state.cookies)) {
+    throw new Error(`${service} session file is invalid. Run \`npm run auth:${service}\` again.`);
+  }
+
+  const now = Date.now() / 1000;
+  const cookies = state.cookies
+    .filter((cookie): cookie is StoredCookie => typeof cookie === "object" && cookie !== null)
+    .filter((cookie) =>
+      typeof cookie.name === "string" &&
+      typeof cookie.value === "string" &&
+      typeof cookie.domain === "string" &&
+      matchesHost(cookie.domain, host) &&
+      (typeof cookie.expires !== "number" || cookie.expires < 0 || cookie.expires > now),
+    )
+    .map((cookie) => `${cookie.name}=${cookie.value}`);
+
+  if (cookies.length === 0) {
+    throw new Error(`${service} session has no valid cookies for ${host}. Run \`npm run auth:${service}\` again.`);
+  }
+
+  return cookies.join("; ");
 }

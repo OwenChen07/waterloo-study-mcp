@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { piazzaOnlyStorageState } from "./browser-login.js";
-import { getSessionPath, getStateDirectory } from "./session-store.js";
+import { getSessionCookieHeader, getSessionPath, getStateDirectory } from "./session-store.js";
 
 const originalStateDir = process.env.STUDY_MCP_STATE_DIR;
 
@@ -36,5 +39,23 @@ describe("session-store", () => {
 
     expect(state.cookies.map((cookie) => cookie.name)).toEqual(["piazza"]);
     expect(state.origins.map((origin) => origin.origin)).toEqual(["https://piazza.com"]);
+  });
+
+  it("sends only unexpired cookies that apply to the requested host", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "waterloo-study-mcp-"));
+    vi.stubEnv("STUDY_MCP_STATE_DIR", directory);
+    try {
+      await writeFile(getSessionPath("learn"), JSON.stringify({
+        cookies: [
+          { name: "session", value: "keep-private", domain: "learn.uwaterloo.ca", expires: -1 },
+          { name: "expired", value: "old", domain: "learn.uwaterloo.ca", expires: 1 },
+          { name: "other", value: "nope", domain: "piazza.com", expires: -1 },
+        ],
+      }));
+
+      await expect(getSessionCookieHeader("learn", "learn.uwaterloo.ca")).resolves.toBe("session=keep-private");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

@@ -8,6 +8,7 @@ import type {
 
 export interface StudyProvider {
   listCourses(): Promise<Course[]>;
+  listPiazzaCourses(): Promise<Course[]>;
   getUpcomingWork(daysAhead: number, now?: Date): Promise<UpcomingWork[]>;
   getAnnouncements(courseId: string): Promise<Announcement[]>;
   listPiazzaFolders(courseId: string): Promise<PiazzaFolder[]>;

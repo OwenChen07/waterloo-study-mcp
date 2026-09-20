@@ -64,6 +64,10 @@ export class MockStudyProvider implements StudyProvider {
     return courses;
   }
 
+  async listPiazzaCourses(): Promise<Course[]> {
+    return courses.filter((course) => course.id === "cs-246");
+  }
+
   async getUpcomingWork(daysAhead: number, now = new Date()): Promise<UpcomingWork[]> {
     const end = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
     return work.filter(({ dueAt }) => {
