@@ -1,11 +1,11 @@
 # Waterloo Study MCP
 
-A local, read-only Model Context Protocol (MCP) server for Waterloo study workflows. The first release deliberately uses fictional mock data and exposes only:
+A local, read-only Model Context Protocol (MCP) server for Waterloo study workflows. It supports an explicit mock mode for development and an explicit live mode for local, authenticated use:
 
 - LEARN-style course listings, upcoming work, and announcements
 - Piazza-style course listings, folders, search, and posts
 
-It does **not** retrieve grades/submissions or provide write tools. The project now includes optional, local browser-login commands that save only session data on your computer; the MCP tools still use fictional mock data until the real providers are implemented.
+It does **not** retrieve grades/submissions or provide write tools. Local browser-login commands save session data only on your computer.
 
 ## Why mock data first?
 
@@ -17,7 +17,7 @@ Requires Node.js 22 or later.
 
 ```sh
 npm install
-npm run dev
+DATA_PROVIDER=mock npm run dev
 ```
 
 The default transport is stdio, intended for a local MCP client. Never expose this development server or future credentials to a public network.
@@ -35,7 +35,7 @@ npm run auth:status
 
 `auth:piazza` intentionally starts inside your authenticated LEARN session. Open a current course and click its Piazza external-tool link to complete Waterloo's LTI launch; generic Piazza sign-in may not offer a Waterloo option. Only Piazza-domain session data is saved to the Piazza session file.
 
-To use real, read-only data after both sessions are present, start the server with `DATA_PROVIDER=live`. Mock mode remains the default.
+To use real, read-only data after both sessions are present, start the server with `DATA_PROVIDER=live`. The provider mode is always required; the server never silently falls back to mock data.
 
 ```sh
 DATA_PROVIDER=live npm run dev
@@ -53,7 +53,7 @@ Live mode currently reads LEARN courses, upcoming assignments/quizzes, and annou
 - `piazza_search_posts`
 - `piazza_get_post`
 
-All tools return fictional data in this version.
+In mock mode, all tools return fictional data. In live mode, they query only your locally authenticated sessions.
 
 ## Development
 

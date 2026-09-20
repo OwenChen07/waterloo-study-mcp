@@ -19,7 +19,7 @@ type D2LEnrollment = {
   OrgUnit?: { Id?: number; Code?: string | null; Name?: string };
   Access?: { CanAccess?: boolean; IsActive?: boolean; StartDate?: string | null; EndDate?: string | null };
 };
-type D2LPage<T> = T[] | { Items?: T[] };
+type D2LCollection<T> = T[] | { Items?: T[]; Objects?: T[]; Next?: string | null };
 type D2LAssignment = { Id?: number; Name?: string; DueDate?: string | null };
 type D2LQuiz = { QuizId?: number; Name?: string; DueDate?: string | null; EndDate?: string | null };
 type D2LNews = {
@@ -52,12 +52,30 @@ export class AuthenticationRequiredError extends Error {
   }
 }
 
+export class LiveDataRetrievalError extends Error {
+  constructor(detail: string) {
+    super(`Could not retrieve complete LEARN coursework data: ${detail}. No upcoming-work result was returned, so this must not be interpreted as nothing due.`);
+    this.name = "LiveDataRetrievalError";
+  }
+}
+
 function plainText(value: string | undefined): string {
   return (value ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function pageItems<T>(value: D2LPage<T>): T[] {
-  return Array.isArray(value) ? value : (value.Items ?? []);
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function collectionItems<T>(value: D2LCollection<T>): T[] {
+  return Array.isArray(value) ? value : (value.Items ?? value.Objects ?? []);
+}
+
+export function nextCollectionPath(next: string | null | undefined): string | undefined {
+  if (!next) return undefined;
+  const url = new URL(next, LEARN_BASE);
+  if (url.host !== LEARN_HOST) throw new LiveDataRetrievalError("LEARN returned a pagination link outside its own host");
+  return `${url.pathname}${url.search}`;
 }
 
 export class LiveStudyProvider implements StudyProvider {
@@ -67,18 +85,37 @@ export class LiveStudyProvider implements StudyProvider {
     const cookie = await getSessionCookieHeader("learn", LEARN_HOST).catch((error) => {
       throw new AuthenticationRequiredError("learn", error instanceof Error ? error.message : undefined);
     });
-    const response = await fetch(`${LEARN_BASE}${path}`, {
+    const response = await fetch(path.startsWith("https://") ? path : `${LEARN_BASE}${path}`, {
       headers: { Accept: "application/json", Cookie: cookie, "X-Requested-With": "XMLHttpRequest" },
       redirect: "manual",
       signal: AbortSignal.timeout(20_000),
     });
-    if (response.status === 401 || response.status === 403 || response.status >= 300 && response.status < 400) {
+    if (response.status === 401 || response.status >= 300 && response.status < 400) {
       throw new AuthenticationRequiredError("learn");
+    }
+    if (response.status === 403) {
+      throw new Error("LEARN denied access to this resource for the current enrollment.");
     }
     if (!response.ok || !(response.headers.get("content-type") ?? "").includes("json")) {
       throw new Error(`LEARN returned an unexpected response (${response.status}).`);
     }
     return response.json() as Promise<T>;
+  }
+
+  private async listQuizzes(courseId: string): Promise<D2LQuiz[]> {
+    const quizzes: D2LQuiz[] = [];
+    let path: string | undefined = `/d2l/api/le/${LEARN_LE_VERSION}/${courseId}/quizzes/`;
+    let pages = 0;
+
+    while (path && pages < 10) {
+      const page: D2LCollection<D2LQuiz> = await this.learnJson<D2LCollection<D2LQuiz>>(path);
+      quizzes.push(...collectionItems(page));
+      path = Array.isArray(page) ? undefined : nextCollectionPath(page.Next);
+      pages++;
+    }
+
+    if (path) throw new LiveDataRetrievalError(`quiz pagination exceeded the 10-page safety limit for course ${courseId}`);
+    return quizzes;
   }
 
   private async piazzaCall<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
@@ -116,10 +153,10 @@ export class LiveStudyProvider implements StudyProvider {
   }
 
   async listCourses(): Promise<Course[]> {
-    const result = await this.learnJson<D2LPage<D2LEnrollment>>(
+    const result = await this.learnJson<D2LCollection<D2LEnrollment>>(
       `/d2l/api/lp/${LEARN_LP_VERSION}/enrollments/myenrollments/?orgUnitTypeId=3`,
     );
-    return pageItems(result)
+    return collectionItems(result)
       .filter((item) => item.OrgUnit?.Id && item.Access?.CanAccess !== false && item.Access?.IsActive !== false)
       .map((item) => ({
         id: String(item.OrgUnit!.Id),
@@ -141,17 +178,32 @@ export class LiveStudyProvider implements StudyProvider {
 
   async getUpcomingWork(daysAhead: number, now = new Date()): Promise<UpcomingWork[]> {
     const courses = await this.listCourses();
+    // Community shells are represented as course offerings but commonly have no term start
+    // date and deny coursework endpoints. They remain visible in list_courses, but do not
+    // belong in a scan for course deadlines.
+    const courseworkCourses = courses.filter((course) => course.term !== "Current");
     const end = new Date(now.getTime() + daysAhead * 86_400_000);
-    const perCourse = await Promise.all(courses.map(async (course) => {
-      const [assignments, quizzes] = await Promise.all([
-        this.learnJson<D2LAssignment[]>(`/d2l/api/le/${LEARN_LE_VERSION}/${course.id}/dropbox/folders/`).catch(() => []),
-        this.learnJson<D2LPage<D2LQuiz>>(`/d2l/api/le/${LEARN_LE_VERSION}/${course.id}/quizzes/`).catch(() => []),
+    const perCourse = await Promise.all(courseworkCourses.map(async (course) => {
+      const [assignmentResult, quizResult] = await Promise.allSettled([
+        this.learnJson<D2LAssignment[]>(`/d2l/api/le/${LEARN_LE_VERSION}/${course.id}/dropbox/folders/`),
+        this.listQuizzes(course.id),
       ]);
+      const failures = [
+        assignmentResult.status === "rejected" ? `${course.code}: assignments (${errorMessage(assignmentResult.reason)})` : undefined,
+        quizResult.status === "rejected" ? `${course.code}: quizzes (${errorMessage(quizResult.reason)})` : undefined,
+      ].filter((failure): failure is string => Boolean(failure));
+      if (failures.length > 0) throw new LiveDataRetrievalError(failures.join("; "));
+      if (assignmentResult.status !== "fulfilled" || quizResult.status !== "fulfilled") {
+        throw new LiveDataRetrievalError("an unexpected coursework request failure occurred");
+      }
+
+      const assignments = assignmentResult.value;
+      const quizzes = quizResult.value;
       const assignmentWork = assignments.flatMap((item): UpcomingWork[] => item.Id && item.DueDate ? [{
         id: String(item.Id), courseId: course.id, title: item.Name ?? "Assignment", dueAt: item.DueDate, kind: "assignment",
         url: `${LEARN_BASE}/d2l/lms/dropbox/user/folders_list.d2l?ou=${course.id}`,
       }] : []);
-      const quizWork = pageItems(quizzes).flatMap((item): UpcomingWork[] => {
+      const quizWork = quizzes.flatMap((item): UpcomingWork[] => {
         const dueAt = item.DueDate ?? item.EndDate;
         return item.QuizId && dueAt ? [{
           id: String(item.QuizId), courseId: course.id, title: item.Name ?? "Quiz", dueAt, kind: "quiz",

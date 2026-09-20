@@ -3,7 +3,10 @@ import { MockStudyProvider } from "./providers/mock-study-provider.js";
 import { LiveStudyProvider } from "./providers/live-study-provider.js";
 import { createStudyServer } from "./server.js";
 
-const providerMode = process.env.DATA_PROVIDER ?? "mock";
+const providerMode = process.env.DATA_PROVIDER;
+if (!providerMode) {
+  throw new Error("DATA_PROVIDER must be explicitly set to \"mock\" or \"live\".");
+}
 if (providerMode !== "mock" && providerMode !== "live") {
   throw new Error(`Unsupported DATA_PROVIDER: ${providerMode}. Use \"mock\" or \"live\".`);
 }
