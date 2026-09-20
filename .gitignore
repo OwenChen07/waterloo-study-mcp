@@ -3,5 +3,6 @@ dist/
 .env
 .env.*
 !.env.example
+.study-mcp/
 *.log
 .DS_Store

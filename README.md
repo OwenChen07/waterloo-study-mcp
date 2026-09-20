@@ -5,7 +5,7 @@ A local, read-only Model Context Protocol (MCP) server for Waterloo study workfl
 - LEARN-style course listings, upcoming work, and announcements
 - Piazza-style course listings, folders, search, and posts
 
-It does **not** connect to LEARN or Piazza, store real credentials, retrieve grades/submissions, or provide write tools.
+It does **not** retrieve grades/submissions or provide write tools. The project now includes optional, local browser-login commands that save only session data on your computer; the MCP tools still use fictional mock data until the real providers are implemented.
 
 ## Why mock data first?
 
@@ -21,6 +21,19 @@ npm run dev
 ```
 
 The default transport is stdio, intended for a local MCP client. Never expose this development server or future credentials to a public network.
+
+## Sign in locally
+
+The login commands open a normal browser window. Complete the sign-in and Duo approval yourself, then return to the terminal and press Enter. The program never asks for, logs, or stores your password. It saves the browser session under `~/.waterloo-study-mcp` with owner-only filesystem permissions; override that location with `STUDY_MCP_STATE_DIR` if needed.
+
+```sh
+npx playwright install chromium
+npm run auth:learn
+npm run auth:piazza
+npm run auth:status
+```
+
+These sessions are not yet used by MCP tools. They are the authentication foundation for the upcoming read-only LEARN and Piazza providers. A session can expire or be revoked at any time; rerun the matching login command when that happens.
 
 ## Available tools
 
@@ -46,6 +59,6 @@ Future work must preserve these constraints:
 
 1. Read-only by default.
 2. Least-privilege tools and data fields.
-3. No secret or personal-data logging.
+3. No secret or personal-data logging; session files must never be committed or shared.
 4. Local-only operation until an approved authentication model exists.
 5. No automatic posting, submitting, or course administration.
