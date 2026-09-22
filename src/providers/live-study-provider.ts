@@ -43,6 +43,8 @@ type PiazzaFeed = { feed?: PiazzaFeedItem[]; tags?: { popular?: string[]; instru
 type PiazzaThread = PiazzaFeedItem & {
   content?: string;
   history?: Array<{ content?: string; created?: string }>;
+  children?: PiazzaThread[];
+  type?: string;
 };
 
 export class AuthenticationRequiredError extends Error {
@@ -76,6 +78,26 @@ export function nextCollectionPath(next: string | null | undefined): string | un
   const url = new URL(next, LEARN_BASE);
   if (url.host !== LEARN_HOST) throw new LiveDataRetrievalError("LEARN returned a pagination link outside its own host");
   return `${url.pathname}${url.search}`;
+}
+
+/**
+ * Piazza represents a post as a tree: the question is the root and answers and
+ * follow-ups are children.  The first history item alone is therefore not a
+ * complete discussion (and is often not the instructor's answer).
+ */
+export function piazzaThreadText(thread: PiazzaThread): string {
+  const segments: string[] = [];
+  const visit = (node: PiazzaThread, isRoot = false) => {
+    const content = plainText(node.history?.[0]?.content ?? node.content);
+    if (content) {
+      const label = !isRoot && node.type ? `[${node.type}] ` : "";
+      const segment = `${label}${content}`;
+      if (!segments.includes(segment)) segments.push(segment);
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(thread, true);
+  return segments.join("\n\n");
 }
 
 export class LiveStudyProvider implements StudyProvider {
@@ -246,7 +268,7 @@ export class LiveStudyProvider implements StudyProvider {
     if (!item || item.nr === undefined) return undefined;
     return {
       id: String(item.nr), courseId, folderIds: item.folders ?? [], subject: item.subject ?? "Untitled post",
-      content: plainText(item.history?.[0]?.content ?? item.content), createdAt: item.history?.[0]?.created ?? item.created ?? "",
+      content: piazzaThreadText(item), createdAt: item.history?.[0]?.created ?? item.created ?? "",
       url: `${PIAZZA_BASE}/class/${courseId}/post/${item.nr}`,
     };
   }

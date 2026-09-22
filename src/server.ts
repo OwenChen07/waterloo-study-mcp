@@ -47,7 +47,7 @@ export function createStudyServer(provider: StudyProvider): McpServer {
 
   server.tool(
     "piazza_get_post",
-    "Get one Piazza post by course and post identifier.",
+    "Get one complete Piazza discussion by course and post identifier, including answers and follow-ups when available.",
     { course_id: z.string().min(1), post_id: z.string().min(1) },
     async ({ course_id, post_id }) => {
       const post = await provider.getPiazzaPost(course_id, post_id);

@@ -41,7 +41,7 @@ To use real, read-only data after both sessions are present, start the server wi
 DATA_PROVIDER=live npm run dev
 ```
 
-Live mode currently reads LEARN courses, upcoming assignments/quizzes, and announcements, plus Piazza courses, folders, search results, and posts. A session can expire or be revoked at any time; rerun the matching login command when that happens.
+Live mode currently reads LEARN courses, upcoming assignments/quizzes, and announcements, plus Piazza courses, folders, search results, and complete discussion threads (question, answers, and follow-ups). A session can expire or be revoked at any time; rerun the matching login command when that happens.
 
 ## Available tools
 
