@@ -33,6 +33,8 @@ npm run auth:piazza
 npm run auth:status
 ```
 
+`auth:status` verifies that each saved session still authenticates; a session file merely existing is not treated as a valid sign-in.
+
 `auth:piazza` intentionally starts inside your authenticated LEARN session. Open a current course and click its Piazza external-tool link to complete Waterloo's LTI launch; generic Piazza sign-in may not offer a Waterloo option. Only Piazza-domain session data is saved to the Piazza session file.
 
 To use real, read-only data after both sessions are present, start the server with `DATA_PROVIDER=live`. The provider mode is always required; the server never silently falls back to mock data.

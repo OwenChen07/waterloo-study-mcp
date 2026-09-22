@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { piazzaOnlyStorageState } from "./browser-login.js";
 import { getSessionCookieHeader, getSessionPath, getStateDirectory } from "./session-store.js";
+import { verifySession } from "./verify-session.js";
 
 const originalStateDir = process.env.STUDY_MCP_STATE_DIR;
 
@@ -55,6 +56,24 @@ describe("session-store", () => {
 
       await expect(getSessionCookieHeader("learn", "learn.uwaterloo.ca")).resolves.toBe("session=keep-private");
     } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reports an expired or rejected session instead of treating its file as usable", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "waterloo-study-mcp-"));
+    vi.stubEnv("STUDY_MCP_STATE_DIR", directory);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 302 }));
+    try {
+      await writeFile(getSessionPath("learn"), JSON.stringify({
+        cookies: [{ name: "session", value: "keep-private", domain: "learn.uwaterloo.ca", expires: -1 }],
+      }));
+      await expect(verifySession("learn")).resolves.toEqual({
+        service: "learn", usable: false, reason: "Session is expired or no longer authorized.",
+      });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      fetchMock.mockRestore();
       await rm(directory, { recursive: true, force: true });
     }
   });
