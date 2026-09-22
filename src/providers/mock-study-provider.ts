@@ -84,6 +84,10 @@ export class MockStudyProvider implements StudyProvider {
     return folders.filter((folder) => folder.courseId === courseId);
   }
 
+  async listRecentPiazzaPosts(courseId: string, limit = 20): Promise<PiazzaPost[]> {
+    return posts.filter((post) => post.courseId === courseId).slice(0, limit);
+  }
+
   async searchPiazzaPosts(courseId: string, query: string): Promise<PiazzaPost[]> {
     const normalizedQuery = query.trim().toLowerCase();
     return posts.filter((post) =>

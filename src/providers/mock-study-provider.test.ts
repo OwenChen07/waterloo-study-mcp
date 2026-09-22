@@ -21,4 +21,10 @@ describe("MockStudyProvider", () => {
   it("does not return a post from a different course", async () => {
     await expect(provider.getPiazzaPost("math-239", "post-1")).resolves.toBeUndefined();
   });
+
+  it("lists recent Piazza posts for a course", async () => {
+    await expect(provider.listRecentPiazzaPosts("cs-246", 1)).resolves.toMatchObject([
+      { id: "post-1", subject: "Clarification on assignment 2 ownership" },
+    ]);
+  });
 });

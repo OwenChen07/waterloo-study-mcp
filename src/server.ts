@@ -39,6 +39,13 @@ export function createStudyServer(provider: StudyProvider): McpServer {
   );
 
   server.tool(
+    "piazza_list_recent_posts",
+    "List recent Piazza posts for a course. Use piazza_get_post on a relevant result to retrieve its answers and follow-ups.",
+    { course_id: z.string().min(1), limit: z.number().int().min(1).max(50).default(20) },
+    async ({ course_id, limit }) => asText(await provider.listRecentPiazzaPosts(course_id, limit)),
+  );
+
+  server.tool(
     "piazza_search_posts",
     "Search Piazza posts by course and text query.",
     { course_id: z.string().min(1), query: z.string().min(2).max(200) },

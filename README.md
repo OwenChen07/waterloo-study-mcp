@@ -50,6 +50,7 @@ Live mode currently reads LEARN courses, upcoming assignments/quizzes, and annou
 - `get_announcements`
 - `piazza_list_courses`
 - `piazza_list_folders`
+- `piazza_list_recent_posts`
 - `piazza_search_posts`
 - `piazza_get_post`
 

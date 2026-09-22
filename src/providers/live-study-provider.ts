@@ -255,6 +255,17 @@ export class LiveStudyProvider implements StudyProvider {
       .map((name) => ({ id: name, courseId, name }));
   }
 
+  async listRecentPiazzaPosts(courseId: string, limit = 20): Promise<PiazzaPost[]> {
+    const feed = await this.piazzaCall<PiazzaFeed>("network.get_my_feed", {
+      nid: courseId, limit, offset: 0, sort: "date_desc",
+    });
+    return (feed.feed ?? []).flatMap((item): PiazzaPost[] => item.nr !== undefined ? [{
+      id: String(item.nr), courseId, folderIds: item.folders ?? [], subject: item.subject ?? "Untitled post",
+      content: plainText(item.content_snipet), createdAt: item.created ?? item.updated ?? "",
+      url: `${PIAZZA_BASE}/class/${courseId}/post/${item.nr}`,
+    }] : []);
+  }
+
   async searchPiazzaPosts(courseId: string, query: string): Promise<PiazzaPost[]> {
     const results = await this.piazzaCall<PiazzaFeedItem[]>("network.search", { nid: courseId, query });
     return results.flatMap((item): PiazzaPost[] => item.nr !== undefined ? [{
