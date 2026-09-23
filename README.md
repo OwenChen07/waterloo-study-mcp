@@ -22,6 +22,12 @@ DATA_PROVIDER=mock npm run dev
 
 The default transport is stdio, intended for a local MCP client. Never expose this development server or future credentials to a public network.
 
+## Remote connector foundation (development only)
+
+`npm run remote:dev` starts a localhost-only Streamable HTTP MCP demonstration at `http://127.0.0.1:3000/mcp`. It intentionally permits **mock data only** and cannot bind to a public interface. It exists to validate the remote MCP transport independently of student data.
+
+Do not deploy it or add it to a Claude web connector. A production remote connector requires an approved UWaterloo OAuth/API integration, per-user authorization, encrypted credential storage, a privacy/security review, and HTTPS hosting. The cookie-backed live provider must remain local.
+
 ## Sign in locally
 
 The login commands open a normal browser window. Complete the sign-in and Duo approval yourself, then return to the terminal and press Enter. The program never asks for, logs, or stores your password. It saves the browser session under `~/.waterloo-study-mcp` with owner-only filesystem permissions; override that location with `STUDY_MCP_STATE_DIR` if needed.

@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
+    "remote:dev": "REMOTE_MCP_DEMO=1 DATA_PROVIDER=mock tsx src/remote/index.ts",
     "start": "node dist/index.js",
     "auth:learn": "tsx src/auth/learn-login.ts",
     "auth:piazza": "tsx src/auth/piazza-login.ts",
