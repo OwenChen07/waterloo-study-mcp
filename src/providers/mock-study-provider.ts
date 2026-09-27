@@ -5,6 +5,7 @@ import type {
   PiazzaPost,
   UpcomingWork,
 } from "../domain.js";
+import type { LearnContentDocument, LearnContentTopic } from "../learn-content.js";
 import type { ProviderPerformanceStats, StudyProvider, StudySnapshot, UpcomingWorkOptions } from "./study-provider.js";
 
 const courses: Course[] = [
@@ -39,6 +40,17 @@ const announcements: Announcement[] = [
     publishedAt: "2026-09-14T09:00:00-04:00",
     body: "The assignment specification and starter files are now available.",
     url: "https://learn.example.invalid/cs-246/announcements/1",
+  },
+];
+
+const content: LearnContentTopic[] = [
+  {
+    id: "101", courseId: "math-239", title: "Course Outline", kind: "topic", topicType: "File",
+    isHidden: false, isLocked: false, url: "https://learn.example.invalid/math-239/content/course-outline",
+  },
+  {
+    id: "102", courseId: "math-239", title: "Week 1 notes", kind: "topic", topicType: "File",
+    isHidden: false, isLocked: false, url: "https://learn.example.invalid/math-239/content/week-1",
   },
 ];
 
@@ -96,6 +108,23 @@ export class MockStudyProvider implements StudyProvider {
 
   async getAnnouncements(courseId: string): Promise<Announcement[]> {
     return announcements.filter((announcement) => announcement.courseId === courseId);
+  }
+
+  async listCourseContent(courseId: string): Promise<LearnContentTopic[]> {
+    return content.filter((topic) => topic.courseId === courseId);
+  }
+
+  async getCourseContentTopic(courseId: string, topicId: string): Promise<LearnContentDocument> {
+    const topic = (await this.listCourseContent(courseId)).find((item) => item.id === topicId);
+    if (!topic) throw new Error(`No content topic ${topicId} exists for ${courseId}.`);
+    return {
+      topic, contentType: "text/html", truncated: false,
+      text: topic.title === "Course Outline" ? "Mock course outline: weekly quizzes are written in tutorial." : "Mock course notes.",
+    };
+  }
+
+  async findCourseOutlines(courseId: string): Promise<LearnContentTopic[]> {
+    return (await this.listCourseContent(courseId)).filter((topic) => /course\s*(outline|syllabus)|syllabus/i.test(topic.title));
   }
 
   async listPiazzaFolders(courseId: string): Promise<PiazzaFolder[]> {

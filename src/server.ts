@@ -35,9 +35,30 @@ export function createStudyServer(provider: StudyProvider): McpServer {
 
   server.tool(
     "get_announcements",
-    "Get LEARN announcements for a course.",
+    "Get LEARN announcements for a course, including safe http(s) links found in their bodies when available.",
     { course_id: z.string().min(1) },
     async ({ course_id }) => asText(await provider.getAnnouncements(course_id)),
+  );
+
+  server.tool(
+    "learn_list_content",
+    "List currently available LEARN course-content modules and topics. Use this to locate outlines, syllabi, schedules, and notes; it does not download their contents.",
+    { course_id: z.string().min(1) },
+    async ({ course_id }) => asText(await provider.listCourseContent(course_id)),
+  );
+
+  server.tool(
+    "learn_find_course_outlines",
+    "Find currently available LEARN content topics whose titles look like a course outline, syllabus, or assessment schedule. Results include source URLs and topic IDs for learn_get_content_topic.",
+    { course_id: z.string().min(1) },
+    async ({ course_id }) => asText(await provider.findCourseOutlines(course_id)),
+  );
+
+  server.tool(
+    "learn_get_content_topic",
+    "Read one currently available LEARN content topic by ID. Text and HTML can be returned; non-text files such as PDFs are identified with a source URL rather than being misrepresented as extracted text.",
+    { course_id: z.string().min(1), topic_id: z.string().min(1) },
+    async ({ course_id, topic_id }) => asText(await provider.getCourseContentTopic(course_id, topic_id)),
   );
 
   server.tool("piazza_list_courses", "List the available Piazza courses from the configured data provider.", async () =>

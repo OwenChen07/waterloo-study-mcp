@@ -5,6 +5,7 @@ import type {
   PiazzaPost,
   UpcomingWork,
 } from "../domain.js";
+import type { LearnContentDocument, LearnContentTopic } from "../learn-content.js";
 
 export type ProviderPerformanceStats = {
   cache: { hits: number; misses: number };
@@ -25,6 +26,9 @@ export interface StudyProvider {
   getStudySnapshot(daysAhead: number): Promise<StudySnapshot>;
   getPerformanceStats(): ProviderPerformanceStats;
   getAnnouncements(courseId: string): Promise<Announcement[]>;
+  listCourseContent(courseId: string): Promise<LearnContentTopic[]>;
+  getCourseContentTopic(courseId: string, topicId: string): Promise<LearnContentDocument>;
+  findCourseOutlines(courseId: string): Promise<LearnContentTopic[]>;
   listPiazzaFolders(courseId: string): Promise<PiazzaFolder[]>;
   listRecentPiazzaPosts(courseId: string, limit?: number): Promise<PiazzaPost[]>;
   searchPiazzaPosts(courseId: string, query: string): Promise<PiazzaPost[]>;

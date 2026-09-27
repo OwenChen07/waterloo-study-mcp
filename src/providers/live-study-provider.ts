@@ -5,6 +5,7 @@ import type {
   PiazzaPost,
   UpcomingWork,
 } from "../domain.js";
+import type { LearnContentDocument, LearnContentTopic } from "../learn-content.js";
 import { getSessionCookieHeader } from "../auth/session-store.js";
 import { TimedAsyncCache } from "./timed-cache.js";
 import type { ProviderPerformanceStats, StudyProvider, StudySnapshot, UpcomingWorkOptions } from "./study-provider.js";
@@ -29,6 +30,19 @@ type D2LNews = {
   Body?: { Text?: string; Html?: string };
   StartDate?: string | null;
   IsHidden?: boolean;
+};
+type D2LContentObject = {
+  Title?: string;
+  ShortTitle?: string;
+  Type?: string;
+  TopicType?: string;
+  TopicId?: number;
+  ModuleId?: number;
+  Url?: string;
+  IsHidden?: boolean;
+  IsLocked?: boolean;
+  Modules?: D2LContentObject[];
+  Topics?: D2LContentObject[];
 };
 type PiazzaCourse = { id?: string; num?: string; name?: string; term?: string };
 type PiazzaFeedItem = {
@@ -64,6 +78,119 @@ export class LiveDataRetrievalError extends Error {
 
 function plainText(value: string | undefined): string {
   return (value ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+const CONTENT_TEXT_LIMIT = 50_000;
+const CONTENT_FILE_LIMIT_BYTES = 10 * 1024 * 1024;
+
+function learnContentUrl(courseId: string, topicId: string, sourceUrl?: string): string {
+  if (sourceUrl) {
+    try {
+      const url = new URL(sourceUrl, LEARN_BASE);
+      if (url.protocol === "https:" || url.protocol === "http:") return url.toString();
+    } catch {
+      // Fall back to LEARN's topic view when the TOC contains a malformed URL.
+    }
+  }
+  return `${LEARN_BASE}/d2l/le/content/${courseId}/viewContent/${topicId}/View`;
+}
+
+export function flattenContentToc(courseId: string, objects: D2LContentObject[]): LearnContentTopic[] {
+  const topics: LearnContentTopic[] = [];
+  const visit = (item: D2LContentObject) => {
+    const topicId = item.TopicId;
+    const moduleId = item.ModuleId;
+    if (topicId ?? moduleId) {
+      topics.push({
+        id: String(topicId ?? moduleId),
+        courseId,
+        title: item.Title ?? item.ShortTitle ?? "Untitled content",
+        kind: topicId ? "topic" : "module",
+        topicType: item.TopicType ?? item.Type,
+        isHidden: item.IsHidden === true,
+        isLocked: item.IsLocked === true,
+        url: topicId ? learnContentUrl(courseId, String(topicId), item.Url) : `${LEARN_BASE}/d2l/le/content/${courseId}/Home`,
+      });
+    }
+    for (const child of item.Modules ?? []) visit(child);
+    for (const child of item.Topics ?? []) visit(child);
+  };
+  for (const item of objects) visit(item);
+  return topics;
+}
+
+export function contentTocRootItems(value: D2LContentObject[] | { Modules?: D2LContentObject[] }): D2LContentObject[] {
+  return Array.isArray(value) ? value : (value.Modules ?? []);
+}
+
+export function extractHtmlLinks(value: string | undefined): Array<{ text: string; url: string }> {
+  const links: Array<{ text: string; url: string }> = [];
+  const pattern = /<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of (value ?? "").matchAll(pattern)) {
+    try {
+      const url = new URL(match[2]!, LEARN_BASE);
+      if (url.protocol !== "https:" && url.protocol !== "http:") continue;
+      const link = { text: plainText(match[3]) || url.toString(), url: url.toString() };
+      if (!links.some((existing) => existing.url === link.url && existing.text === link.text)) links.push(link);
+    } catch {
+      // Ignore malformed and non-web announcement links.
+    }
+  }
+  return links;
+}
+
+type AnnouncementWithLinks = Announcement & { links: Array<{ text: string; url: string }> };
+
+function announcementWithLinks(announcement: Announcement, links: Array<{ text: string; url: string }>): AnnouncementWithLinks {
+  return { ...announcement, links };
+}
+
+export function readableContentText(value: string, contentType: string): { text?: string; truncated: boolean; warning?: string } {
+  if (!/^(text\/|application\/(xhtml\+xml|json))/i.test(contentType)) {
+    return {
+      truncated: false,
+      warning: `This topic is ${contentType || "a non-text file"}; its text was not extracted. Open the source URL to read it.`,
+    };
+  }
+  const normalized = /html|xhtml/i.test(contentType)
+    ? plainText(value.replace(/<(?:script|style)\b[^>]*>[\s\S]*?<\/(?:script|style)>/gi, ""))
+    : value.trim();
+  return normalized.length > CONTENT_TEXT_LIMIT
+    ? { text: normalized.slice(0, CONTENT_TEXT_LIMIT), truncated: true }
+    : { text: normalized, truncated: false };
+}
+
+async function extractPdfText(data: Uint8Array): Promise<{ text?: string; truncated: boolean; warning?: string }> {
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const loadingTask = getDocument({ data });
+  try {
+    const document = await loadingTask.promise;
+    const pages: string[] = [];
+    let length = 0;
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
+      const page = await document.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item) => "str" in item ? item.str : "")
+        .filter(Boolean)
+        .join(" ");
+      page.cleanup();
+      if (!pageText) continue;
+      const remaining = CONTENT_TEXT_LIMIT - length;
+      if (pageText.length > remaining) {
+        pages.push(pageText.slice(0, Math.max(0, remaining)));
+        return { text: pages.join("\n\n"), truncated: true };
+      }
+      pages.push(pageText);
+      length += pageText.length;
+    }
+    const text = pages.join("\n\n").trim();
+    return text
+      ? { text, truncated: false }
+      : { truncated: false, warning: "No selectable text was found in this PDF. It may be a scanned document; open the source URL to read it." };
+  } finally {
+    await loadingTask.destroy();
+  }
 }
 
 function errorMessage(error: unknown): string {
@@ -132,30 +259,40 @@ export class LiveStudyProvider implements StudyProvider {
     this.requestStats[service].totalMs += Math.round(performance.now() - startedAt);
   }
 
-  private async learnJson<T>(path: string): Promise<T> {
+  private async learnResponse(path: string, accept: string): Promise<Response> {
     const startedAt = performance.now();
     try {
-    const cookie = await getSessionCookieHeader("learn", LEARN_HOST).catch((error) => {
-      throw new AuthenticationRequiredError("learn", error instanceof Error ? error.message : undefined);
-    });
-    const response = await fetch(path.startsWith("https://") ? path : `${LEARN_BASE}${path}`, {
-      headers: { Accept: "application/json", Cookie: cookie, "X-Requested-With": "XMLHttpRequest" },
-      redirect: "manual",
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (response.status === 401 || response.status >= 300 && response.status < 400) {
-      throw new AuthenticationRequiredError("learn");
-    }
-    if (response.status === 403) {
-      throw new Error("LEARN denied access to this resource for the current enrollment.");
-    }
-    if (!response.ok || !(response.headers.get("content-type") ?? "").includes("json")) {
-      throw new Error(`LEARN returned an unexpected response (${response.status}).`);
-    }
-    return response.json() as Promise<T>;
+      const cookie = await getSessionCookieHeader("learn", LEARN_HOST).catch((error) => {
+        throw new AuthenticationRequiredError("learn", error instanceof Error ? error.message : undefined);
+      });
+      const url = new URL(path, LEARN_BASE);
+      if (url.hostname !== LEARN_HOST || url.protocol !== "https:") {
+        throw new Error("Refusing to send a LEARN session to a non-LEARN URL.");
+      }
+      const response = await fetch(url, {
+        headers: { Accept: accept, Cookie: cookie, "X-Requested-With": "XMLHttpRequest" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (response.status === 401 || response.status >= 300 && response.status < 400) {
+        throw new AuthenticationRequiredError("learn");
+      }
+      if (response.status === 403) {
+        throw new Error("LEARN denied access to this resource for the current enrollment.");
+      }
+      if (!response.ok) throw new Error(`LEARN returned an unexpected response (${response.status}).`);
+      return response;
     } finally {
       this.recordRequest("learn", startedAt);
     }
+  }
+
+  private async learnJson<T>(path: string): Promise<T> {
+    const response = await this.learnResponse(path, "application/json");
+    if (!(response.headers.get("content-type") ?? "").includes("json")) {
+      throw new Error(`LEARN returned non-JSON content (${response.status}).`);
+    }
+    return response.json() as Promise<T>;
   }
 
   private async listQuizzes(courseId: string): Promise<D2LQuiz[]> {
@@ -316,12 +453,71 @@ export class LiveStudyProvider implements StudyProvider {
   async getAnnouncements(courseId: string): Promise<Announcement[]> {
     return this.cache.get(`learn:announcements:${courseId}`, 90_000, async () => {
       const items = await this.learnJson<D2LNews[]>(`/d2l/api/le/${LEARN_LE_VERSION}/${courseId}/news/`);
-      return items.filter((item) => !item.IsHidden).flatMap((item): Announcement[] => item.Id ? [{
+      return items.filter((item) => !item.IsHidden).flatMap((item): Announcement[] => item.Id ? [announcementWithLinks({
         id: String(item.Id), courseId, title: item.Title ?? "Announcement", publishedAt: item.StartDate ?? "",
         body: plainText(item.Body?.Text ?? item.Body?.Html),
         url: `${LEARN_BASE}/d2l/le/news/view?ou=${courseId}&itemId=${item.Id}`,
-      }] : []);
+      }, extractHtmlLinks(item.Body?.Html ?? item.Body?.Text))] : []);
     });
+  }
+
+  async listCourseContent(courseId: string): Promise<LearnContentTopic[]> {
+    return this.cache.get(`learn:content:${courseId}`, 120_000, async () => {
+      const toc = await this.learnJson<D2LContentObject[] | { Modules?: D2LContentObject[] }>(
+        `/d2l/api/le/${LEARN_LE_VERSION}/${courseId}/content/toc`,
+      );
+      return flattenContentToc(courseId, contentTocRootItems(toc))
+        .filter((topic) => !topic.isHidden && !topic.isLocked);
+    });
+  }
+
+  async getCourseContentTopic(courseId: string, topicId: string): Promise<LearnContentDocument> {
+    const topic = (await this.listCourseContent(courseId)).find((item) => item.kind === "topic" && item.id === topicId);
+    if (!topic) {
+      throw new Error(`No currently available LEARN content topic with ID ${topicId} was found for course ${courseId}. Use learn_list_content first.`);
+    }
+    const source = new URL(topic.url);
+    if (source.hostname !== LEARN_HOST) {
+      return {
+        topic, contentType: "external resource", truncated: false,
+        warning: "This LEARN topic links to a resource outside LEARN. The server will not send your LEARN session to another host; open the source URL yourself.",
+      };
+    }
+    let response: Response;
+    try {
+      response = await this.learnResponse(
+        `/d2l/api/le/${LEARN_LE_VERSION}/${courseId}/content/topics/${encodeURIComponent(topicId)}/file`,
+        "text/html, text/plain, application/xhtml+xml, application/pdf;q=0.8",
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("unexpected response (404)")) {
+        return {
+          topic, contentType: "unavailable", truncated: false,
+          warning: "This LEARN topic does not expose a downloadable text or file resource. Open the source URL to read it.",
+        };
+      }
+      throw error;
+    }
+    const contentType = (response.headers.get("content-type") ?? "application/octet-stream").split(";", 1)[0]!.trim();
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > CONTENT_FILE_LIMIT_BYTES) {
+      throw new Error(`LEARN content topic is larger than the ${CONTENT_FILE_LIMIT_BYTES / 1024 / 1024} MB read-only safety limit. Open the source URL to read it.`);
+    }
+    const extracted = contentType === "application/pdf"
+      ? await (async () => {
+        const data = new Uint8Array(await response.arrayBuffer());
+        if (data.byteLength > CONTENT_FILE_LIMIT_BYTES) {
+          throw new Error(`LEARN content topic is larger than the ${CONTENT_FILE_LIMIT_BYTES / 1024 / 1024} MB read-only safety limit. Open the source URL to read it.`);
+        }
+        return extractPdfText(data);
+      })()
+      : readableContentText(await response.text(), contentType);
+    return { topic, contentType, ...extracted };
+  }
+
+  async findCourseOutlines(courseId: string): Promise<LearnContentTopic[]> {
+    const outlineTitle = /\b(course\s*(outline|syllabus)|syllabus|assessment\s*(schedule|plan))\b/i;
+    return (await this.listCourseContent(courseId)).filter((topic) => topic.kind === "topic" && outlineTitle.test(topic.title));
   }
 
   async listPiazzaFolders(courseId: string): Promise<PiazzaFolder[]> {

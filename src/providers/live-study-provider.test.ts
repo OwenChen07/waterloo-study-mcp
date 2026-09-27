@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { collectionItems, nextCollectionPath, piazzaThreadText, requirePiazzaCourse, resolvePiazzaCourseReference } from "./live-study-provider.js";
+import {
+  collectionItems,
+  contentTocRootItems,
+  extractHtmlLinks,
+  flattenContentToc,
+  nextCollectionPath,
+  piazzaThreadText,
+  readableContentText,
+  requirePiazzaCourse,
+  resolvePiazzaCourseReference,
+} from "./live-study-provider.js";
 
 describe("LEARN collection handling", () => {
   it("reads Brightspace quiz collections returned under Objects", () => {
@@ -15,6 +25,35 @@ describe("LEARN collection handling", () => {
 
   it("accepts a bare collection as well as Brightspace wrapper objects", () => {
     expect(collectionItems([{ QuizId: 99 }])).toEqual([{ QuizId: 99 }]);
+  });
+
+  it("flattens both nested content modules and their separate topic list", () => {
+    const toc = contentTocRootItems({
+      Modules: [{
+        ModuleId: 1, Title: "Start here", Modules: [{ ModuleId: 2, Title: "Week 1" }],
+        Topics: [{ TopicId: 31, Title: "Course Outline", TopicType: "File", Url: "https://outline.example.edu/view" }],
+      }],
+    });
+    expect(flattenContentToc("1288629", toc)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "1", kind: "module", title: "Start here" }),
+      expect.objectContaining({ id: "2", kind: "module", title: "Week 1" }),
+      expect.objectContaining({
+        id: "31", kind: "topic", title: "Course Outline", topicType: "File", url: "https://outline.example.edu/view",
+      }),
+    ]));
+  });
+
+  it("preserves safe announcement links while ignoring javascript URLs", () => {
+    expect(extractHtmlLinks('<a href="/d2l/le/content/1/Home">outline</a><a href="javascript:alert(1)">bad</a>')).toEqual([
+      { text: "outline", url: "https://learn.uwaterloo.ca/d2l/le/content/1/Home" },
+    ]);
+  });
+
+  it("does not claim to extract text from a PDF", () => {
+    expect(readableContentText("%PDF", "application/pdf")).toMatchObject({
+      truncated: false,
+      warning: expect.stringContaining("application/pdf"),
+    });
   });
 
   it("includes the question, answers, and nested follow-ups in a Piazza thread", () => {
