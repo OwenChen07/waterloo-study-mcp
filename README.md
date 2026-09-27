@@ -48,7 +48,7 @@ Live mode currently reads LEARN courses, upcoming assignments/quizzes, and annou
 ## Available tools
 
 - `list_courses`
-- `get_upcoming_work`
+- `get_upcoming_work` (optionally pass a `course_id` to limit the scan)
 - `get_study_snapshot` (courses and upcoming work in one call)
 - `get_provider_performance` (local request and cache statistics only)
 - `get_announcements`

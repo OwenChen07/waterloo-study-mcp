@@ -15,11 +15,12 @@ export type ProviderPerformanceStats = {
 };
 
 export type StudySnapshot = { courses: Course[]; upcomingWork: UpcomingWork[] };
+export type UpcomingWorkOptions = { courseId?: string; now?: Date };
 
 export interface StudyProvider {
   listCourses(): Promise<Course[]>;
   listPiazzaCourses(): Promise<Course[]>;
-  getUpcomingWork(daysAhead: number, now?: Date): Promise<UpcomingWork[]>;
+  getUpcomingWork(daysAhead: number, options?: UpcomingWorkOptions): Promise<UpcomingWork[]>;
   getStudySnapshot(daysAhead: number): Promise<StudySnapshot>;
   getPerformanceStats(): ProviderPerformanceStats;
   getAnnouncements(courseId: string): Promise<Announcement[]>;

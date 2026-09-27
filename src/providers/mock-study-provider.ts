@@ -5,7 +5,7 @@ import type {
   PiazzaPost,
   UpcomingWork,
 } from "../domain.js";
-import type { ProviderPerformanceStats, StudyProvider, StudySnapshot } from "./study-provider.js";
+import type { ProviderPerformanceStats, StudyProvider, StudySnapshot, UpcomingWorkOptions } from "./study-provider.js";
 
 const courses: Course[] = [
   { id: "cs-246", code: "CS 246", name: "Object-Oriented Software Development", term: "Fall 2026" },
@@ -68,11 +68,12 @@ export class MockStudyProvider implements StudyProvider {
     return courses.filter((course) => course.id === "cs-246");
   }
 
-  async getUpcomingWork(daysAhead: number, now = new Date()): Promise<UpcomingWork[]> {
+  async getUpcomingWork(daysAhead: number, options: UpcomingWorkOptions = {}): Promise<UpcomingWork[]> {
+    const now = options.now ?? new Date();
     const end = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
-    return work.filter(({ dueAt }) => {
+    return work.filter(({ dueAt, courseId }) => {
       const due = new Date(dueAt);
-      return due >= now && due <= end;
+      return (!options.courseId || courseId === options.courseId) && due >= now && due <= end;
     });
   }
 

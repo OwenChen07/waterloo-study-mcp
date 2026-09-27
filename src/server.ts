@@ -15,9 +15,9 @@ export function createStudyServer(provider: StudyProvider): McpServer {
 
   server.tool(
     "get_upcoming_work",
-    "Get upcoming LEARN assignments and quizzes due within a requested number of days.",
-    { days_ahead: z.number().int().min(1).max(30).default(7) },
-    async ({ days_ahead }) => asText(await provider.getUpcomingWork(days_ahead)),
+    "Get upcoming LEARN assignments and quizzes due within a requested number of days. Optionally restrict the scan to one course.",
+    { days_ahead: z.number().int().min(1).max(30).default(7), course_id: z.string().min(1).optional() },
+    async ({ days_ahead, course_id }) => asText(await provider.getUpcomingWork(days_ahead, { courseId: course_id })),
   );
 
   server.tool(

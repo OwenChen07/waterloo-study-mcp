@@ -7,7 +7,7 @@ import type {
 } from "../domain.js";
 import { getSessionCookieHeader } from "../auth/session-store.js";
 import { TimedAsyncCache } from "./timed-cache.js";
-import type { ProviderPerformanceStats, StudyProvider, StudySnapshot } from "./study-provider.js";
+import type { ProviderPerformanceStats, StudyProvider, StudySnapshot, UpcomingWorkOptions } from "./study-provider.js";
 
 const LEARN_HOST = "learn.uwaterloo.ca";
 const LEARN_BASE = `https://${LEARN_HOST}`;
@@ -221,19 +221,23 @@ export class LiveStudyProvider implements StudyProvider {
     }));
   }
 
-  async getUpcomingWork(daysAhead: number, now = new Date()): Promise<UpcomingWork[]> {
-    if (arguments.length < 2) {
-      return this.cache.get(`learn:upcoming:${daysAhead}`, 120_000, () => this.getUpcomingWorkUncached(daysAhead, now));
+  async getUpcomingWork(daysAhead: number, options: UpcomingWorkOptions = {}): Promise<UpcomingWork[]> {
+    const now = options.now ?? new Date();
+    if (!options.now) {
+      const scope = options.courseId ?? "all";
+      return this.cache.get(`learn:upcoming:${scope}:${daysAhead}`, 120_000, () =>
+        this.getUpcomingWorkUncached(daysAhead, now, options.courseId),
+      );
     }
-    return this.getUpcomingWorkUncached(daysAhead, now);
+    return this.getUpcomingWorkUncached(daysAhead, now, options.courseId);
   }
 
-  private async getUpcomingWorkUncached(daysAhead: number, now: Date): Promise<UpcomingWork[]> {
+  private async getUpcomingWorkUncached(daysAhead: number, now: Date, courseId?: string): Promise<UpcomingWork[]> {
     const courses = await this.listCourses();
     // Community shells are represented as course offerings but commonly have no term start
     // date and deny coursework endpoints. They remain visible in list_courses, but do not
     // belong in a scan for course deadlines.
-    const courseworkCourses = courses.filter((course) => course.term !== "Current");
+    const courseworkCourses = courses.filter((course) => course.term !== "Current" && (!courseId || course.id === courseId));
     const end = new Date(now.getTime() + daysAhead * 86_400_000);
     const perCourse = await Promise.all(courseworkCourses.map(async (course) => {
       const [assignmentResult, quizResult] = await Promise.allSettled([
