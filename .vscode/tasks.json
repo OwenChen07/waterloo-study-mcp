@@ -11,7 +11,7 @@
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
-        "focus": true,
+        "focus": false,
         "panel": "dedicated"
       }
     },
@@ -25,7 +25,7 @@
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
-        "focus": true,
+        "focus": false,
         "panel": "dedicated"
       }
     },
@@ -39,7 +39,7 @@
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
-        "focus": true,
+        "focus": false,
         "panel": "dedicated"
       }
     }
