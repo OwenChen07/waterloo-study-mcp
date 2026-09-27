@@ -81,6 +81,14 @@ export function nextCollectionPath(next: string | null | undefined): string | un
   return `${url.pathname}${url.search}`;
 }
 
+export function requirePiazzaCourse(courses: Course[], courseId: string): void {
+  if (!courses.some((course) => course.id === courseId)) {
+    throw new Error(
+      `Unknown Piazza course_id: ${courseId}. Use piazza_list_courses first; LEARN organization-unit IDs cannot be used with Piazza tools.`,
+    );
+  }
+}
+
 /**
  * Piazza represents a post as a tree: the question is the root and answers and
  * follow-ups are children.  The first history item alone is therefore not a
@@ -212,13 +220,15 @@ export class LiveStudyProvider implements StudyProvider {
   }
 
   async listPiazzaCourses(): Promise<Course[]> {
-    const profile = await this.piazzaCall<PiazzaProfile>("user_profile.get_profile");
-    return Object.entries(profile.all_classes ?? {}).map(([id, course]) => ({
-      id: course.id ?? id,
-      code: course.num ?? course.name ?? "Piazza course",
-      name: course.name ?? course.num ?? "Unnamed Piazza course",
-      term: course.term ?? "Current",
-    }));
+    return this.cache.get("piazza:courses", 120_000, async () => {
+      const profile = await this.piazzaCall<PiazzaProfile>("user_profile.get_profile");
+      return Object.entries(profile.all_classes ?? {}).map(([id, course]) => ({
+        id: course.id ?? id,
+        code: course.num ?? course.name ?? "Piazza course",
+        name: course.name ?? course.num ?? "Unnamed Piazza course",
+        term: course.term ?? "Current",
+      }));
+    });
   }
 
   async getUpcomingWork(daysAhead: number, options: UpcomingWorkOptions = {}): Promise<UpcomingWork[]> {
@@ -318,11 +328,18 @@ export class LiveStudyProvider implements StudyProvider {
   }
 
   async searchPiazzaPosts(courseId: string, query: string): Promise<PiazzaPost[]> {
-    const results = await this.piazzaCall<PiazzaFeedItem[]>("network.search", { nid: courseId, query });
-    return results.flatMap((item): PiazzaPost[] => item.nr !== undefined ? [{
-      id: String(item.nr), courseId, folderIds: item.folders ?? [], subject: item.subject ?? "Untitled post",
-      content: plainText(item.content_snipet), createdAt: item.created ?? item.updated ?? "", url: `${PIAZZA_BASE}/class/${courseId}/post/${item.nr}`,
-    }] : []);
+    try {
+      const results = await this.piazzaCall<PiazzaFeedItem[]>("network.search", { nid: courseId, query });
+      return results.flatMap((item): PiazzaPost[] => item.nr !== undefined ? [{
+        id: String(item.nr), courseId, folderIds: item.folders ?? [], subject: item.subject ?? "Untitled post",
+        content: plainText(item.content_snipet), createdAt: item.created ?? item.updated ?? "", url: `${PIAZZA_BASE}/class/${courseId}/post/${item.nr}`,
+      }] : []);
+    } catch (error) {
+      if (error instanceof Error && error.message === "Piazza rejected network.search.") {
+        requirePiazzaCourse(await this.listPiazzaCourses(), courseId);
+      }
+      throw error;
+    }
   }
 
   async getPiazzaPost(courseId: string, postId: string): Promise<PiazzaPost | undefined> {

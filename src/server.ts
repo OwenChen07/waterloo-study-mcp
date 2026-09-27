@@ -60,7 +60,7 @@ export function createStudyServer(provider: StudyProvider): McpServer {
 
   server.tool(
     "piazza_search_posts",
-    "Search Piazza posts by course and text query.",
+    "Search Piazza posts by course and text query. course_id must come from piazza_list_courses, not list_courses.",
     { course_id: z.string().min(1), query: z.string().min(2).max(200) },
     async ({ course_id, query }) => asText(await provider.searchPiazzaPosts(course_id, query)),
   );

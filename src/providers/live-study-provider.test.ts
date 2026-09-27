@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectionItems, nextCollectionPath, piazzaThreadText } from "./live-study-provider.js";
+import { collectionItems, nextCollectionPath, piazzaThreadText, requirePiazzaCourse } from "./live-study-provider.js";
 
 describe("LEARN collection handling", () => {
   it("reads Brightspace quiz collections returned under Objects", () => {
@@ -28,5 +28,10 @@ describe("LEARN collection handling", () => {
     })).toBe(
       "When is assignment one due?\n\n[i_answer] It is due Friday at 5 PM.\n\n[followup] The course outline has the same date.",
     );
+  });
+
+  it("requires a Piazza network identifier rather than a LEARN organization-unit identifier", () => {
+    expect(() => requirePiazzaCourse([{ id: "piazza-network", code: "CS 245", name: "Logic", term: "Fall" }], "1288499"))
+      .toThrow("piazza_list_courses");
   });
 });
