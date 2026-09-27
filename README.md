@@ -49,6 +49,8 @@ Live mode currently reads LEARN courses, upcoming assignments/quizzes, and annou
 
 - `list_courses`
 - `get_upcoming_work`
+- `get_study_snapshot` (courses and upcoming work in one call)
+- `get_provider_performance` (local request and cache statistics only)
 - `get_announcements`
 - `piazza_list_courses`
 - `piazza_list_folders`
@@ -57,6 +59,8 @@ Live mode currently reads LEARN courses, upcoming assignments/quizzes, and annou
 - `piazza_get_post`
 
 In mock mode, all tools return fictional data. In live mode, they query only your locally authenticated sessions.
+
+Live mode keeps a short, in-memory cache during the current MCP process: course lists and upcoming work for two minutes, and announcements for 90 seconds. This avoids duplicate requests during a conversation; restart the MCP process or wait for expiry to force a refresh.
 
 ## Development
 

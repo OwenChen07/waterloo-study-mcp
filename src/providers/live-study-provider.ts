@@ -6,7 +6,8 @@ import type {
   UpcomingWork,
 } from "../domain.js";
 import { getSessionCookieHeader } from "../auth/session-store.js";
-import type { StudyProvider } from "./study-provider.js";
+import { TimedAsyncCache } from "./timed-cache.js";
+import type { ProviderPerformanceStats, StudyProvider, StudySnapshot } from "./study-provider.js";
 
 const LEARN_HOST = "learn.uwaterloo.ca";
 const LEARN_BASE = `https://${LEARN_HOST}`;
@@ -102,8 +103,20 @@ export function piazzaThreadText(thread: PiazzaThread): string {
 
 export class LiveStudyProvider implements StudyProvider {
   private piazzaCsrfToken: string | undefined;
+  private readonly cache = new TimedAsyncCache();
+  private readonly requestStats = {
+    learn: { count: 0, totalMs: 0 },
+    piazza: { count: 0, totalMs: 0 },
+  };
+
+  private recordRequest(service: "learn" | "piazza", startedAt: number): void {
+    this.requestStats[service].count++;
+    this.requestStats[service].totalMs += Math.round(performance.now() - startedAt);
+  }
 
   private async learnJson<T>(path: string): Promise<T> {
+    const startedAt = performance.now();
+    try {
     const cookie = await getSessionCookieHeader("learn", LEARN_HOST).catch((error) => {
       throw new AuthenticationRequiredError("learn", error instanceof Error ? error.message : undefined);
     });
@@ -122,6 +135,9 @@ export class LiveStudyProvider implements StudyProvider {
       throw new Error(`LEARN returned an unexpected response (${response.status}).`);
     }
     return response.json() as Promise<T>;
+    } finally {
+      this.recordRequest("learn", startedAt);
+    }
   }
 
   private async listQuizzes(courseId: string): Promise<D2LQuiz[]> {
@@ -141,6 +157,8 @@ export class LiveStudyProvider implements StudyProvider {
   }
 
   private async piazzaCall<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    const startedAt = performance.now();
+    try {
     const cookie = await getSessionCookieHeader("piazza", PIAZZA_HOST).catch((error) => {
       throw new AuthenticationRequiredError("piazza", error instanceof Error ? error.message : undefined);
     });
@@ -172,20 +190,25 @@ export class LiveStudyProvider implements StudyProvider {
     try { payload = JSON.parse(text) as { result?: T; error?: unknown }; } catch { throw new AuthenticationRequiredError("piazza"); }
     if (payload.error) throw new Error(`Piazza rejected ${method}.`);
     return payload.result as T;
+    } finally {
+      this.recordRequest("piazza", startedAt);
+    }
   }
 
   async listCourses(): Promise<Course[]> {
-    const result = await this.learnJson<D2LCollection<D2LEnrollment>>(
-      `/d2l/api/lp/${LEARN_LP_VERSION}/enrollments/myenrollments/?orgUnitTypeId=3`,
-    );
-    return collectionItems(result)
-      .filter((item) => item.OrgUnit?.Id && item.Access?.CanAccess !== false && item.Access?.IsActive !== false)
-      .map((item) => ({
-        id: String(item.OrgUnit!.Id),
-        code: item.OrgUnit!.Code || item.OrgUnit!.Name || "Course",
-        name: item.OrgUnit!.Name || "Unnamed course",
-        term: item.Access?.StartDate?.slice(0, 10) ?? "Current",
-      }));
+    return this.cache.get("learn:courses", 120_000, async () => {
+      const result = await this.learnJson<D2LCollection<D2LEnrollment>>(
+        `/d2l/api/lp/${LEARN_LP_VERSION}/enrollments/myenrollments/?orgUnitTypeId=3`,
+      );
+      return collectionItems(result)
+        .filter((item) => item.OrgUnit?.Id && item.Access?.CanAccess !== false && item.Access?.IsActive !== false)
+        .map((item) => ({
+          id: String(item.OrgUnit!.Id),
+          code: item.OrgUnit!.Code || item.OrgUnit!.Name || "Course",
+          name: item.OrgUnit!.Name || "Unnamed course",
+          term: item.Access?.StartDate?.slice(0, 10) ?? "Current",
+        }));
+    });
   }
 
   async listPiazzaCourses(): Promise<Course[]> {
@@ -199,6 +222,13 @@ export class LiveStudyProvider implements StudyProvider {
   }
 
   async getUpcomingWork(daysAhead: number, now = new Date()): Promise<UpcomingWork[]> {
+    if (arguments.length < 2) {
+      return this.cache.get(`learn:upcoming:${daysAhead}`, 120_000, () => this.getUpcomingWorkUncached(daysAhead, now));
+    }
+    return this.getUpcomingWorkUncached(daysAhead, now);
+  }
+
+  private async getUpcomingWorkUncached(daysAhead: number, now: Date): Promise<UpcomingWork[]> {
     const courses = await this.listCourses();
     // Community shells are represented as course offerings but commonly have no term start
     // date and deny coursework endpoints. They remain visible in list_courses, but do not
@@ -240,13 +270,30 @@ export class LiveStudyProvider implements StudyProvider {
     }).sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt));
   }
 
+  async getStudySnapshot(daysAhead: number): Promise<StudySnapshot> {
+    const [courses, upcomingWork] = await Promise.all([this.listCourses(), this.getUpcomingWork(daysAhead)]);
+    return { courses, upcomingWork };
+  }
+
+  getPerformanceStats(): ProviderPerformanceStats {
+    return {
+      cache: this.cache.getStats(),
+      requests: {
+        learn: { ...this.requestStats.learn },
+        piazza: { ...this.requestStats.piazza },
+      },
+    };
+  }
+
   async getAnnouncements(courseId: string): Promise<Announcement[]> {
-    const items = await this.learnJson<D2LNews[]>(`/d2l/api/le/${LEARN_LE_VERSION}/${courseId}/news/`);
-    return items.filter((item) => !item.IsHidden).flatMap((item): Announcement[] => item.Id ? [{
-      id: String(item.Id), courseId, title: item.Title ?? "Announcement", publishedAt: item.StartDate ?? "",
-      body: plainText(item.Body?.Text ?? item.Body?.Html),
-      url: `${LEARN_BASE}/d2l/le/news/view?ou=${courseId}&itemId=${item.Id}`,
-    }] : []);
+    return this.cache.get(`learn:announcements:${courseId}`, 90_000, async () => {
+      const items = await this.learnJson<D2LNews[]>(`/d2l/api/le/${LEARN_LE_VERSION}/${courseId}/news/`);
+      return items.filter((item) => !item.IsHidden).flatMap((item): Announcement[] => item.Id ? [{
+        id: String(item.Id), courseId, title: item.Title ?? "Announcement", publishedAt: item.StartDate ?? "",
+        body: plainText(item.Body?.Text ?? item.Body?.Html),
+        url: `${LEARN_BASE}/d2l/le/news/view?ou=${courseId}&itemId=${item.Id}`,
+      }] : []);
+    });
   }
 
   async listPiazzaFolders(courseId: string): Promise<PiazzaFolder[]> {

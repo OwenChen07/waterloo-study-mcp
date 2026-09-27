@@ -5,7 +5,7 @@ import type {
   PiazzaPost,
   UpcomingWork,
 } from "../domain.js";
-import type { StudyProvider } from "./study-provider.js";
+import type { ProviderPerformanceStats, StudyProvider, StudySnapshot } from "./study-provider.js";
 
 const courses: Course[] = [
   { id: "cs-246", code: "CS 246", name: "Object-Oriented Software Development", term: "Fall 2026" },
@@ -74,6 +74,14 @@ export class MockStudyProvider implements StudyProvider {
       const due = new Date(dueAt);
       return due >= now && due <= end;
     });
+  }
+
+  async getStudySnapshot(daysAhead: number): Promise<StudySnapshot> {
+    return { courses: await this.listCourses(), upcomingWork: await this.getUpcomingWork(daysAhead) };
+  }
+
+  getPerformanceStats(): ProviderPerformanceStats {
+    return { cache: { hits: 0, misses: 0 }, requests: { learn: { count: 0, totalMs: 0 }, piazza: { count: 0, totalMs: 0 } } };
   }
 
   async getAnnouncements(courseId: string): Promise<Announcement[]> {

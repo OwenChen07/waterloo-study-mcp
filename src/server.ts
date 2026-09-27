@@ -21,6 +21,19 @@ export function createStudyServer(provider: StudyProvider): McpServer {
   );
 
   server.tool(
+    "get_study_snapshot",
+    "Get courses and upcoming work together. This is the fastest way to start a study-planning request.",
+    { days_ahead: z.number().int().min(1).max(30).default(7) },
+    async ({ days_ahead }) => asText(await provider.getStudySnapshot(days_ahead)),
+  );
+
+  server.tool(
+    "get_provider_performance",
+    "Show request timing and cache statistics for this local MCP session. It never includes course content or credentials.",
+    async () => asText(provider.getPerformanceStats()),
+  );
+
+  server.tool(
     "get_announcements",
     "Get LEARN announcements for a course.",
     { course_id: z.string().min(1) },
