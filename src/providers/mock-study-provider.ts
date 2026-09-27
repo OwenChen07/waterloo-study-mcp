@@ -68,6 +68,15 @@ export class MockStudyProvider implements StudyProvider {
     return courses.filter((course) => course.id === "cs-246");
   }
 
+  async resolvePiazzaCourse(reference: string): Promise<Course> {
+    const normalized = reference.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    const matches = (await this.listPiazzaCourses()).filter((course) =>
+      [course.code, course.name].some((value) => value.replace(/[^a-z0-9]/gi, "").toLowerCase() === normalized),
+    );
+    if (matches.length !== 1) throw new Error(`Could not identify one Piazza course from: ${reference}.`);
+    return matches[0]!;
+  }
+
   async getUpcomingWork(daysAhead: number, options: UpcomingWorkOptions = {}): Promise<UpcomingWork[]> {
     const now = options.now ?? new Date();
     const end = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);

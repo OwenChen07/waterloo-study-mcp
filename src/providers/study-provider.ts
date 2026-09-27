@@ -20,6 +20,7 @@ export type UpcomingWorkOptions = { courseId?: string; now?: Date };
 export interface StudyProvider {
   listCourses(): Promise<Course[]>;
   listPiazzaCourses(): Promise<Course[]>;
+  resolvePiazzaCourse(reference: string): Promise<Course>;
   getUpcomingWork(daysAhead: number, options?: UpcomingWorkOptions): Promise<UpcomingWork[]>;
   getStudySnapshot(daysAhead: number): Promise<StudySnapshot>;
   getPerformanceStats(): ProviderPerformanceStats;

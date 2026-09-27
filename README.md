@@ -62,6 +62,8 @@ In mock mode, all tools return fictional data. In live mode, they query only you
 
 Piazza tools require the `course_id` returned by `piazza_list_courses`. A LEARN organization-unit ID returned by `list_courses` is a different identifier and will be rejected with a clear error.
 
+For `piazza_search_posts`, you can also provide a human course reference such as `STAT 230` or `STAT230`; the server resolves it to the matching Piazza course before searching.
+
 Live mode keeps a short, in-memory cache during the current MCP process: course lists and upcoming work for two minutes, and announcements for 90 seconds. This avoids duplicate requests during a conversation; restart the MCP process or wait for expiry to force a refresh.
 
 ## Development

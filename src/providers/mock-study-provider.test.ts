@@ -34,4 +34,8 @@ describe("MockStudyProvider", () => {
       { id: "post-1", subject: "Clarification on assignment 2 ownership" },
     ]);
   });
+
+  it("resolves a human course reference for a Piazza search", async () => {
+    await expect(provider.resolvePiazzaCourse("CS246")).resolves.toMatchObject({ id: "cs-246" });
+  });
 });

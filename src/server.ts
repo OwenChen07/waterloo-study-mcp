@@ -60,9 +60,15 @@ export function createStudyServer(provider: StudyProvider): McpServer {
 
   server.tool(
     "piazza_search_posts",
-    "Search Piazza posts by course and text query. course_id must come from piazza_list_courses, not list_courses.",
-    { course_id: z.string().min(1), query: z.string().min(2).max(200) },
-    async ({ course_id, query }) => asText(await provider.searchPiazzaPosts(course_id, query)),
+    "Search Piazza posts by text query. Provide course as a human reference such as STAT 230, or a course_id from piazza_list_courses.",
+    { course_id: z.string().min(1).optional(), course: z.string().min(2).optional(), query: z.string().min(2).max(200) },
+    async ({ course_id, course, query }) => {
+      if (!course_id && !course) {
+        return asText({ error: "Provide course (for example, STAT 230) or a course_id from piazza_list_courses." });
+      }
+      const resolvedCourseId = course_id ?? (await provider.resolvePiazzaCourse(course!)).id;
+      return asText(await provider.searchPiazzaPosts(resolvedCourseId, query));
+    },
   );
 
   server.tool(

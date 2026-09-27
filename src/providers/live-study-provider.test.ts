@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectionItems, nextCollectionPath, piazzaThreadText, requirePiazzaCourse } from "./live-study-provider.js";
+import { collectionItems, nextCollectionPath, piazzaThreadText, requirePiazzaCourse, resolvePiazzaCourseReference } from "./live-study-provider.js";
 
 describe("LEARN collection handling", () => {
   it("reads Brightspace quiz collections returned under Objects", () => {
@@ -33,5 +33,10 @@ describe("LEARN collection handling", () => {
   it("requires a Piazza network identifier rather than a LEARN organization-unit identifier", () => {
     expect(() => requirePiazzaCourse([{ id: "piazza-network", code: "CS 245", name: "Logic", term: "Fall" }], "1288499"))
       .toThrow("piazza_list_courses");
+  });
+
+  it("resolves punctuation-free course references such as STAT230", () => {
+    expect(resolvePiazzaCourseReference([{ id: "network", code: "STAT 230", name: "Statistics", term: "Fall" }], "STAT230"))
+      .toMatchObject({ id: "network" });
   });
 });

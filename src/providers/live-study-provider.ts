@@ -89,6 +89,16 @@ export function requirePiazzaCourse(courses: Course[], courseId: string): void {
   }
 }
 
+export function resolvePiazzaCourseReference(courses: Course[], reference: string): Course {
+  const normalized = reference.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const matches = courses.filter((course) =>
+    [course.code, course.name].some((value) => value.replace(/[^a-z0-9]/gi, "").toLowerCase() === normalized),
+  );
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length === 0) throw new Error(`No Piazza course matches "${reference}". Call piazza_list_courses to see available courses.`);
+  throw new Error(`More than one Piazza course matches "${reference}". Call piazza_list_courses and use course_id instead.`);
+}
+
 /**
  * Piazza represents a post as a tree: the question is the root and answers and
  * follow-ups are children.  The first history item alone is therefore not a
@@ -229,6 +239,10 @@ export class LiveStudyProvider implements StudyProvider {
         term: course.term ?? "Current",
       }));
     });
+  }
+
+  async resolvePiazzaCourse(reference: string): Promise<Course> {
+    return resolvePiazzaCourseReference(await this.listPiazzaCourses(), reference);
   }
 
   async getUpcomingWork(daysAhead: number, options: UpcomingWorkOptions = {}): Promise<UpcomingWork[]> {
