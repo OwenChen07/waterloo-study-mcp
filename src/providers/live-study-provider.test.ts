@@ -56,6 +56,23 @@ describe("LEARN collection handling", () => {
     });
   });
 
+  it("drops script and style bodies when reading an HTML topic", () => {
+    const html = "<style>p{color:red}</style><p>Week 3 notes</p><script>track()</script>";
+    expect(readableContentText(html, "text/html; charset=utf-8")).toEqual({ text: "Week 3 notes", truncated: false });
+  });
+
+  it("truncates very long topic text and reports the truncation", () => {
+    const result = readableContentText("x".repeat(60_000), "text/plain");
+    expect(result.truncated).toBe(true);
+    expect(result.text).toHaveLength(50_000);
+  });
+
+  it("falls back to the LEARN topic view when a TOC URL is malformed", () => {
+    expect(flattenContentToc("1", [{ TopicId: 7, Title: "Slides", Url: "http://[bad" }])[0]?.url).toBe(
+      "https://learn.uwaterloo.ca/d2l/le/content/1/viewContent/7/View",
+    );
+  });
+
   it("includes the question, answers, and nested follow-ups in a Piazza thread", () => {
     expect(piazzaThreadText({
       content: "When is assignment one due?",
