@@ -167,10 +167,16 @@ export function readableContentText(value: string, contentType: string): { text?
     : { text: normalized, truncated: false };
 }
 
-export function isLegacyWordDocument(contentType: string, contentDisposition: string | null, sourceUrl: string): boolean {
-  if (contentType === "application/msword" || contentType === "application/x-msword") return true;
+const WORD_CONTENT_TYPES = new Set([
+  "application/msword",
+  "application/x-msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+export function isWordDocument(contentType: string, contentDisposition: string | null, sourceUrl: string): boolean {
+  if (WORD_CONTENT_TYPES.has(contentType)) return true;
   const filename = /filename\*?=(?:UTF-8'')?["']?([^"';]+)/i.exec(contentDisposition ?? "")?.[1];
-  return /\.doc$/i.test(filename ?? "") || /\.doc(?:$|[?#])/i.test(sourceUrl);
+  return /\.docx?$/i.test(filename ?? "") || /\.docx?(?:$|[?#])/i.test(sourceUrl);
 }
 
 function limitExtractedText(text: string): { text?: string; truncated: boolean; warning?: string } {
@@ -181,14 +187,14 @@ function limitExtractedText(text: string): { text?: string; truncated: boolean; 
     : { text: normalized, truncated: false };
 }
 
-async function extractLegacyWordText(data: Uint8Array): Promise<{ text?: string; truncated: boolean; warning?: string }> {
+async function extractWordText(data: Uint8Array): Promise<{ text?: string; truncated: boolean; warning?: string }> {
   try {
     const document = await new WordExtractor().extract(Buffer.from(data));
     return limitExtractedText(document.getBody({ filterUnicode: false }));
   } catch {
     return {
       truncated: false,
-      warning: "This legacy Word .doc file could not be parsed locally. It may be encrypted, corrupt, or use an unsupported Word version; open the source URL to read it.",
+      warning: "This Word document could not be parsed locally. It may be encrypted, corrupt, or use an unsupported Word version; open the source URL to read it.",
     };
   }
 }
@@ -536,7 +542,7 @@ export class LiveStudyProvider implements StudyProvider {
     if (Number.isFinite(contentLength) && contentLength > CONTENT_FILE_LIMIT_BYTES) {
       throw new Error(`LEARN content topic is larger than the ${CONTENT_FILE_LIMIT_BYTES / 1024 / 1024} MB read-only safety limit. Open the source URL to read it.`);
     }
-    const needsBinaryExtraction = contentType === "application/pdf" || isLegacyWordDocument(
+    const needsBinaryExtraction = contentType === "application/pdf" || isWordDocument(
       contentType, response.headers.get("content-disposition"), topic.url,
     );
     const extracted = needsBinaryExtraction
@@ -545,7 +551,7 @@ export class LiveStudyProvider implements StudyProvider {
         if (data.byteLength > CONTENT_FILE_LIMIT_BYTES) {
           throw new Error(`LEARN content topic is larger than the ${CONTENT_FILE_LIMIT_BYTES / 1024 / 1024} MB read-only safety limit. Open the source URL to read it.`);
         }
-        return contentType === "application/pdf" ? extractPdfText(data) : extractLegacyWordText(data);
+        return contentType === "application/pdf" ? extractPdfText(data) : extractWordText(data);
       })()
       : readableContentText(await response.text(), contentType);
     return { topic, contentType, ...extracted };

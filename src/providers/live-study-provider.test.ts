@@ -4,7 +4,7 @@ import {
   contentTocRootItems,
   extractHtmlLinks,
   flattenContentToc,
-  isLegacyWordDocument,
+  isWordDocument,
   nextCollectionPath,
   piazzaThreadText,
   readableContentText,
@@ -74,10 +74,13 @@ describe("LEARN collection handling", () => {
     );
   });
 
-  it("recognizes legacy Word documents by MIME type or download filename, but not docx files", () => {
-    expect(isLegacyWordDocument("application/msword", null, "https://learn.example.edu/content/1")).toBe(true);
-    expect(isLegacyWordDocument("application/octet-stream", 'attachment; filename="journal.doc"', "https://learn.example.edu/file")).toBe(true);
-    expect(isLegacyWordDocument("application/octet-stream", 'attachment; filename="journal.docx"', "https://learn.example.edu/file")).toBe(false);
+  it("recognizes Word documents by MIME type, download filename, or source URL", () => {
+    expect(isWordDocument("application/msword", null, "https://learn.example.edu/content/1")).toBe(true);
+    expect(isWordDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document", null, "https://learn.example.edu/content/1")).toBe(true);
+    expect(isWordDocument("application/octet-stream", 'attachment; filename="journal.doc"', "https://learn.example.edu/file")).toBe(true);
+    expect(isWordDocument("application/octet-stream", 'attachment; filename="groups.docx"', "https://learn.example.edu/file")).toBe(true);
+    expect(isWordDocument("application/octet-stream", null, "https://learn.example.edu/Groups%20Section%20004.docx")).toBe(true);
+    expect(isWordDocument("application/octet-stream", 'attachment; filename="notes.docm"', "https://learn.example.edu/file")).toBe(false);
   });
 
   it("includes the question, answers, and nested follow-ups in a Piazza thread", () => {
