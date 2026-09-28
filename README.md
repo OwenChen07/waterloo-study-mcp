@@ -43,7 +43,7 @@ To use real, read-only data after both sessions are present, start the server wi
 DATA_PROVIDER=live npm run dev
 ```
 
-Live mode currently reads LEARN courses, upcoming assignments/quizzes, announcements, and currently available course-content titles. It can read text/HTML topics and extract selectable text from LEARN-hosted PDFs (up to 10 MB); scanned PDFs are clearly reported as having no selectable text. External content is returned as a source URL only—the server never forwards your LEARN session to another host. Announcements preserve safe web links found in their bodies. It also reads Piazza courses, folders, search results, and complete discussion threads (question, answers, and follow-ups). A session can expire or be revoked at any time; rerun the matching login command when that happens.
+Live mode currently reads LEARN courses, upcoming assignments/quizzes, announcements, and currently available course-content titles. It can read text/HTML topics, extract selectable text from LEARN-hosted PDFs, and parse legacy Word `.doc` files (up to 10 MB). Scanned PDFs, encrypted Word files, and unsupported document versions are clearly reported instead of being misrepresented as text. External content is returned as a source URL only—the server never forwards your LEARN session to another host. Announcements preserve safe web links found in their bodies. It also reads Piazza courses, folders, search results, and complete discussion threads (question, answers, and follow-ups). A session can expire or be revoked at any time; rerun the matching login command when that happens.
 
 ## Available tools
 

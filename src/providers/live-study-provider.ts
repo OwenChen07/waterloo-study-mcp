@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import type {
   Announcement,
   Course,
@@ -16,6 +17,12 @@ const LEARN_LP_VERSION = "1.62";
 const LEARN_LE_VERSION = "1.96";
 const PIAZZA_HOST = "piazza.com";
 const PIAZZA_BASE = `https://${PIAZZA_HOST}`;
+const require = createRequire(import.meta.url);
+
+type ExtractedWordDocument = { getBody(options?: { filterUnicode?: boolean }): string };
+type WordExtractorInstance = { extract(source: Buffer): Promise<ExtractedWordDocument> };
+type WordExtractorConstructor = new () => WordExtractorInstance;
+const WordExtractor = require("word-extractor") as WordExtractorConstructor;
 
 type D2LEnrollment = {
   OrgUnit?: { Id?: number; Code?: string | null; Name?: string };
@@ -158,6 +165,32 @@ export function readableContentText(value: string, contentType: string): { text?
   return normalized.length > CONTENT_TEXT_LIMIT
     ? { text: normalized.slice(0, CONTENT_TEXT_LIMIT), truncated: true }
     : { text: normalized, truncated: false };
+}
+
+export function isLegacyWordDocument(contentType: string, contentDisposition: string | null, sourceUrl: string): boolean {
+  if (contentType === "application/msword" || contentType === "application/x-msword") return true;
+  const filename = /filename\*?=(?:UTF-8'')?["']?([^"';]+)/i.exec(contentDisposition ?? "")?.[1];
+  return /\.doc$/i.test(filename ?? "") || /\.doc(?:$|[?#])/i.test(sourceUrl);
+}
+
+function limitExtractedText(text: string): { text?: string; truncated: boolean; warning?: string } {
+  const normalized = text.replace(/\u0000/g, "").replace(/\r\n/g, "\n").trim();
+  if (!normalized) return { truncated: false, warning: "No readable text was found in this document. It may be image-only or protected." };
+  return normalized.length > CONTENT_TEXT_LIMIT
+    ? { text: normalized.slice(0, CONTENT_TEXT_LIMIT), truncated: true }
+    : { text: normalized, truncated: false };
+}
+
+async function extractLegacyWordText(data: Uint8Array): Promise<{ text?: string; truncated: boolean; warning?: string }> {
+  try {
+    const document = await new WordExtractor().extract(Buffer.from(data));
+    return limitExtractedText(document.getBody({ filterUnicode: false }));
+  } catch {
+    return {
+      truncated: false,
+      warning: "This legacy Word .doc file could not be parsed locally. It may be encrypted, corrupt, or use an unsupported Word version; open the source URL to read it.",
+    };
+  }
 }
 
 async function extractPdfText(data: Uint8Array): Promise<{ text?: string; truncated: boolean; warning?: string }> {
@@ -503,13 +536,16 @@ export class LiveStudyProvider implements StudyProvider {
     if (Number.isFinite(contentLength) && contentLength > CONTENT_FILE_LIMIT_BYTES) {
       throw new Error(`LEARN content topic is larger than the ${CONTENT_FILE_LIMIT_BYTES / 1024 / 1024} MB read-only safety limit. Open the source URL to read it.`);
     }
-    const extracted = contentType === "application/pdf"
+    const needsBinaryExtraction = contentType === "application/pdf" || isLegacyWordDocument(
+      contentType, response.headers.get("content-disposition"), topic.url,
+    );
+    const extracted = needsBinaryExtraction
       ? await (async () => {
         const data = new Uint8Array(await response.arrayBuffer());
         if (data.byteLength > CONTENT_FILE_LIMIT_BYTES) {
           throw new Error(`LEARN content topic is larger than the ${CONTENT_FILE_LIMIT_BYTES / 1024 / 1024} MB read-only safety limit. Open the source URL to read it.`);
         }
-        return extractPdfText(data);
+        return contentType === "application/pdf" ? extractPdfText(data) : extractLegacyWordText(data);
       })()
       : readableContentText(await response.text(), contentType);
     return { topic, contentType, ...extracted };

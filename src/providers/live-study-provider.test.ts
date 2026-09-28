@@ -4,6 +4,7 @@ import {
   contentTocRootItems,
   extractHtmlLinks,
   flattenContentToc,
+  isLegacyWordDocument,
   nextCollectionPath,
   piazzaThreadText,
   readableContentText,
@@ -71,6 +72,12 @@ describe("LEARN collection handling", () => {
     expect(flattenContentToc("1", [{ TopicId: 7, Title: "Slides", Url: "http://[bad" }])[0]?.url).toBe(
       "https://learn.uwaterloo.ca/d2l/le/content/1/viewContent/7/View",
     );
+  });
+
+  it("recognizes legacy Word documents by MIME type or download filename, but not docx files", () => {
+    expect(isLegacyWordDocument("application/msword", null, "https://learn.example.edu/content/1")).toBe(true);
+    expect(isLegacyWordDocument("application/octet-stream", 'attachment; filename="journal.doc"', "https://learn.example.edu/file")).toBe(true);
+    expect(isLegacyWordDocument("application/octet-stream", 'attachment; filename="journal.docx"', "https://learn.example.edu/file")).toBe(false);
   });
 
   it("includes the question, answers, and nested follow-ups in a Piazza thread", () => {
