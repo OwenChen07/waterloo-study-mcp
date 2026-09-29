@@ -24,7 +24,7 @@ The default transport is stdio, intended for a local MCP client. Never expose th
 
 ## Sign in locally
 
-The login commands open a normal browser window. Complete the sign-in and Duo approval yourself, then return to the terminal and press Enter. The program never asks for, logs, or stores your password. It saves the browser session under `~/.waterloo-study-mcp` with owner-only filesystem permissions; override that location with `STUDY_MCP_STATE_DIR` if needed.
+The login commands open a normal browser window. Complete the sign-in and Duo approval yourself; the program detects the signed-in browser session and saves it automatically. No terminal input is required, so the commands also work from VS Code tasks. The program never asks for, logs, or stores your password. It saves the browser session under `~/.waterloo-study-mcp` with owner-only filesystem permissions; override that location with `STUDY_MCP_STATE_DIR` if needed.
 
 ```sh
 npx playwright install chromium

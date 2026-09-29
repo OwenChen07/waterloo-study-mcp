@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { piazzaOnlyStorageState } from "./browser-login.js";
+import { piazzaOnlyStorageState, waitForCondition } from "./browser-login.js";
 import { getSessionCookieHeader, getSessionPath, getStateDirectory } from "./session-store.js";
 import { verifySession } from "./verify-session.js";
 
@@ -18,6 +18,17 @@ afterEach(() => {
 });
 
 describe("session-store", () => {
+  it("waits for browser-session detection instead of relying on terminal input", async () => {
+    let attempts = 0;
+    await waitForCondition(async () => ++attempts === 3, { timeoutMs: 100, intervalMs: 0 });
+    expect(attempts).toBe(3);
+  });
+
+  it("reports a timeout when browser-session detection never succeeds", async () => {
+    await expect(waitForCondition(async () => false, { timeoutMs: 1, intervalMs: 0 }))
+      .rejects.toThrow("Sign-in was not detected");
+  });
+
   it("uses an explicitly configured private state directory", () => {
     vi.stubEnv("STUDY_MCP_STATE_DIR", "/private/example-state");
 

@@ -1,6 +1,4 @@
 import { writeFile } from "node:fs/promises";
-import { createInterface } from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
 import { chromium, type BrowserContext } from "playwright";
 import {
   getSessionPath,
@@ -20,14 +18,43 @@ const displayNames: Record<AuthService, string> = {
   piazza: "Piazza",
 };
 
+const LEARN_ENROLLMENTS_URL = "https://learn.uwaterloo.ca/d2l/api/lp/1.62/enrollments/myenrollments/?orgUnitTypeId=3";
+const PIAZZA_CLASS_URL = "https://piazza.com/class";
+const AUTH_TIMEOUT_MS = 15 * 60_000;
+const AUTH_POLL_INTERVAL_MS = 1_000;
+
 type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 
-async function waitForUser(message: string): Promise<void> {
-  const prompt = createInterface({ input, output });
+export async function waitForCondition(
+  check: () => Promise<boolean>,
+  options: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? AUTH_TIMEOUT_MS;
+  const intervalMs = options.intervalMs ?? AUTH_POLL_INTERVAL_MS;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (await check()) return;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error("Sign-in was not detected before the 15-minute timeout. Leave the browser open, complete the sign-in, and try again.");
+}
+
+async function hasLearnSession(context: BrowserContext): Promise<boolean> {
   try {
-    await prompt.question(message);
-  } finally {
-    prompt.close();
+    const response = await context.request.get(LEARN_ENROLLMENTS_URL, { maxRedirects: 0, timeout: 5_000 });
+    return response.ok() && (response.headers()["content-type"] ?? "").includes("json");
+  } catch {
+    return false;
+  }
+}
+
+async function hasPiazzaSession(context: BrowserContext): Promise<boolean> {
+  try {
+    const response = await context.request.get(PIAZZA_CLASS_URL, { maxRedirects: 0, timeout: 5_000 });
+    return response.ok() && /<meta[^>]+name=["']csrf_token["']/i.test(await response.text());
+  } catch {
+    return false;
   }
 }
 
@@ -49,9 +76,8 @@ export async function authenticateInBrowser(service: AuthService): Promise<strin
 
   try {
     await page.goto(loginUrls[service], { waitUntil: "domcontentloaded" });
-    await waitForUser(
-      `Complete sign-in for ${displayNames[service]} in the browser, then press Enter here to save this local session. `,
-    );
+    console.log(`Complete sign-in for ${displayNames[service]} in the browser. The local session will save automatically when sign-in is detected.`);
+    await waitForCondition(() => service === "learn" ? hasLearnSession(context) : hasPiazzaSession(context));
 
     const sessionPath = getSessionPath(service);
     await prepareSessionDirectory(sessionPath);
@@ -79,9 +105,8 @@ export async function authenticatePiazzaThroughLearn(): Promise<string> {
 
   try {
     await page.goto(loginUrls.learn, { waitUntil: "domcontentloaded" });
-    await waitForUser(
-      "Open an enrolled LEARN course, click its Piazza external-tool link, and confirm you can see the course in Piazza. Then press Enter here to save the Piazza session. ",
-    );
+    console.log("Open an enrolled LEARN course, click its Piazza external-tool link, and confirm you can see the course in Piazza. The local Piazza session will save automatically when detected.");
+    await waitForCondition(() => hasPiazzaSession(context));
 
     const piazzaState = piazzaOnlyStorageState(await context.storageState());
     if (piazzaState.cookies.length === 0) {
