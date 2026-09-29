@@ -37,4 +37,16 @@ describe("createStudyServer", () => {
       error: "Post not found.",
     });
   });
+
+  it("rejects get_upcoming_work requests beyond the 30-day window", async () => {
+    const result = await client.callTool({ name: "get_upcoming_work", arguments: { days_ahead: 31 } });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toMatch(/days_ahead/);
+  });
+
+  it("returns only outline-like topics from learn_find_course_outlines", async () => {
+    await expect(callTool(client, "learn_find_course_outlines", { course_id: "math-239" })).resolves.toEqual([
+      expect.objectContaining({ id: "101", title: "Course Outline" }),
+    ]);
+  });
 });
