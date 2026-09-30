@@ -4,6 +4,7 @@ A local, read-only Model Context Protocol (MCP) server for Waterloo study workfl
 
 - LEARN-style course listings, upcoming work, announcements, and course content
 - Piazza-style course listings, folders, search, and posts
+- Marmoset course/project discovery and submission-state summaries
 
 It does **not** retrieve grades/submissions or provide write tools. Local browser-login commands save session data only on your computer.
 
@@ -30,12 +31,15 @@ The login commands open a normal browser window. Complete the sign-in and Duo ap
 npx playwright install chromium
 npm run auth:learn
 npm run auth:piazza
+npm run auth:marmoset
 npm run auth:status
 ```
 
 `auth:status` verifies that each saved session still authenticates; a session file merely existing is not treated as a valid sign-in.
 
 `auth:piazza` intentionally starts inside your authenticated LEARN session. Open a current course and click its Piazza external-tool link to complete Waterloo's LTI launch; generic Piazza sign-in may not offer a Waterloo option. Only Piazza-domain session data is saved to the Piazza session file.
+
+`auth:marmoset` signs in through Marmoset in a normal browser and saves only Marmoset-domain session data locally. Marmoset tools are read-only: they never upload work, spend release tokens, request remarks, or return source files or numeric marks.
 
 To use real, read-only data after both sessions are present, start the server with `DATA_PROVIDER=live`. The provider mode is always required; the server never silently falls back to mock data.
 
@@ -60,6 +64,9 @@ Live mode currently reads LEARN courses, upcoming assignments/quizzes, announcem
 - `piazza_list_recent_posts`
 - `piazza_search_posts`
 - `piazza_get_post`
+- `marmoset_list_courses`
+- `marmoset_list_assignments`
+- `marmoset_get_submission_status`
 
 In mock mode, all tools return fictional data. In live mode, they query only your locally authenticated sessions.
 

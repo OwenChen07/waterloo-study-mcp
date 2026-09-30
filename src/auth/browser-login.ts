@@ -11,15 +11,18 @@ import {
 const loginUrls: Record<AuthService, string> = {
   learn: "https://learn.uwaterloo.ca/",
   piazza: "https://piazza.com/",
+  marmoset: "https://marmoset.student.cs.uwaterloo.ca/",
 };
 
 const displayNames: Record<AuthService, string> = {
   learn: "Waterloo LEARN",
   piazza: "Piazza",
+  marmoset: "Marmoset",
 };
 
 const LEARN_ENROLLMENTS_URL = "https://learn.uwaterloo.ca/d2l/api/lp/1.62/enrollments/myenrollments/?orgUnitTypeId=3";
 const PIAZZA_CLASS_URL = "https://piazza.com/class";
+const MARMOSET_URL = "https://marmoset.student.cs.uwaterloo.ca/";
 const AUTH_TIMEOUT_MS = 15 * 60_000;
 const AUTH_POLL_INTERVAL_MS = 1_000;
 
@@ -58,6 +61,19 @@ async function hasPiazzaSession(context: BrowserContext): Promise<boolean> {
   }
 }
 
+async function hasMarmosetSession(context: BrowserContext): Promise<boolean> {
+  try {
+    const response = await context.request.get(MARMOSET_URL, { maxRedirects: 0, timeout: 5_000 });
+    if (!response.ok()) return false;
+    const cookies = await context.cookies(MARMOSET_URL);
+    const hasSessionCookie = cookies.some((cookie) => cookie.domain.includes("marmoset.student.cs.uwaterloo.ca"));
+    // Marmoset shows the "as" identity-selection link only after WatIAM authentication.
+    return hasSessionCookie && /<a\b[^>]*\bhref=["'][^"']*(?:\/|=)as(?:[/?"']|$)/i.test(await response.text());
+  } catch {
+    return false;
+  }
+}
+
 export function piazzaOnlyStorageState(state: StorageState): StorageState {
   return {
     cookies: state.cookies.filter((cookie) => cookie.domain === "piazza.com" || cookie.domain.endsWith(".piazza.com")),
@@ -77,7 +93,11 @@ export async function authenticateInBrowser(service: AuthService): Promise<strin
   try {
     await page.goto(loginUrls[service], { waitUntil: "domcontentloaded" });
     console.log(`Complete sign-in for ${displayNames[service]} in the browser. The local session will save automatically when sign-in is detected.`);
-    await waitForCondition(() => service === "learn" ? hasLearnSession(context) : hasPiazzaSession(context));
+    await waitForCondition(() => {
+      if (service === "learn") return hasLearnSession(context);
+      if (service === "piazza") return hasPiazzaSession(context);
+      return hasMarmosetSession(context);
+    });
 
     const sessionPath = getSessionPath(service);
     await prepareSessionDirectory(sessionPath);

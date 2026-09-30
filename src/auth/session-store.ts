@@ -2,11 +2,12 @@ import { chmod, mkdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-export type AuthService = "learn" | "piazza";
+export type AuthService = "learn" | "piazza" | "marmoset";
 
 const serviceFileNames: Record<AuthService, string> = {
   learn: "learn-storage-state.json",
   piazza: "piazza-storage-state.json",
+  marmoset: "marmoset-storage-state.json",
 };
 
 export function getStateDirectory(): string {

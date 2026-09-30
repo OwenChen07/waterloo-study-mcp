@@ -6,12 +6,14 @@ import type {
   UpcomingWork,
 } from "../domain.js";
 import type { LearnContentDocument, LearnContentTopic } from "../learn-content.js";
+import type { MarmosetAssignment, MarmosetCourse, MarmosetSubmissionStatus } from "../marmoset.js";
 
 export type ProviderPerformanceStats = {
   cache: { hits: number; misses: number };
   requests: {
     learn: { count: number; totalMs: number };
     piazza: { count: number; totalMs: number };
+    marmoset: { count: number; totalMs: number };
   };
 };
 
@@ -33,4 +35,7 @@ export interface StudyProvider {
   listRecentPiazzaPosts(courseId: string, limit?: number): Promise<PiazzaPost[]>;
   searchPiazzaPosts(courseId: string, query: string): Promise<PiazzaPost[]>;
   getPiazzaPost(courseId: string, postId: string): Promise<PiazzaPost | undefined>;
+  listMarmosetCourses(): Promise<MarmosetCourse[]>;
+  listMarmosetAssignments(courseUrl: string): Promise<MarmosetAssignment[]>;
+  getMarmosetSubmissionStatus(assignmentUrl: string): Promise<MarmosetSubmissionStatus>;
 }

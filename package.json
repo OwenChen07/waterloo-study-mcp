@@ -13,6 +13,7 @@
     "start": "node dist/index.js",
     "auth:learn": "tsx src/auth/learn-login.ts",
     "auth:piazza": "tsx src/auth/piazza-login.ts",
+    "auth:marmoset": "tsx src/auth/marmoset-login.ts",
     "auth:status": "tsx src/auth/status.ts",
     "test": "vitest run",
     "check": "npm run build && npm run test"

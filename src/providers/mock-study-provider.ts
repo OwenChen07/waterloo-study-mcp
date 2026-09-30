@@ -6,6 +6,7 @@ import type {
   UpcomingWork,
 } from "../domain.js";
 import type { LearnContentDocument, LearnContentTopic } from "../learn-content.js";
+import type { MarmosetAssignment, MarmosetCourse, MarmosetSubmissionStatus } from "../marmoset.js";
 import type { ProviderPerformanceStats, StudyProvider, StudySnapshot, UpcomingWorkOptions } from "./study-provider.js";
 
 const courses: Course[] = [
@@ -71,6 +72,13 @@ const posts: PiazzaPost[] = [
   },
 ];
 
+const marmosetCourses: MarmosetCourse[] = [
+  { id: "cs-246", name: "CS 246 – Fall 2026", url: "https://marmoset.example.invalid/course/cs-246" },
+];
+const marmosetAssignments: MarmosetAssignment[] = [
+  { id: "a1", courseId: "cs-246", name: "Assignment 1", url: "https://marmoset.example.invalid/project/a1" },
+];
+
 export class MockStudyProvider implements StudyProvider {
   async listCourses(): Promise<Course[]> {
     return courses;
@@ -103,7 +111,7 @@ export class MockStudyProvider implements StudyProvider {
   }
 
   getPerformanceStats(): ProviderPerformanceStats {
-    return { cache: { hits: 0, misses: 0 }, requests: { learn: { count: 0, totalMs: 0 }, piazza: { count: 0, totalMs: 0 } } };
+    return { cache: { hits: 0, misses: 0 }, requests: { learn: { count: 0, totalMs: 0 }, piazza: { count: 0, totalMs: 0 }, marmoset: { count: 0, totalMs: 0 } } };
   }
 
   async getAnnouncements(courseId: string): Promise<Announcement[]> {
@@ -145,5 +153,15 @@ export class MockStudyProvider implements StudyProvider {
 
   async getPiazzaPost(courseId: string, postId: string): Promise<PiazzaPost | undefined> {
     return posts.find((post) => post.courseId === courseId && post.id === postId);
+  }
+
+  async listMarmosetCourses(): Promise<MarmosetCourse[]> { return marmosetCourses; }
+
+  async listMarmosetAssignments(courseUrl: string): Promise<MarmosetAssignment[]> {
+    return marmosetAssignments.filter((assignment) => courseUrl.includes(assignment.courseId));
+  }
+
+  async getMarmosetSubmissionStatus(assignmentUrl: string): Promise<MarmosetSubmissionStatus> {
+    return { assignmentId: assignmentUrl.split("/").at(-1) ?? "unknown", assignmentUrl, state: "tested", hasSubmission: true, note: "Mock status only." };
   }
 }

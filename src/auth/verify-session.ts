@@ -7,6 +7,7 @@ const targets: Record<AuthService, { host: string; url: string }> = {
     url: "https://learn.uwaterloo.ca/d2l/api/lp/1.62/enrollments/myenrollments/?orgUnitTypeId=3",
   },
   piazza: { host: "piazza.com", url: "https://piazza.com/class" },
+  marmoset: { host: "marmoset.student.cs.uwaterloo.ca", url: "https://marmoset.student.cs.uwaterloo.ca/" },
 };
 
 export type SessionVerification = { service: AuthService; usable: boolean; reason?: string };

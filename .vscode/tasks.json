@@ -42,6 +42,20 @@
         "focus": false,
         "panel": "dedicated"
       }
+    },
+    {
+      "label": "Waterloo Study: Sign in to Marmoset",
+      "type": "shell",
+      "command": "npm run auth:marmoset",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated"
+      }
     }
   ]
 }

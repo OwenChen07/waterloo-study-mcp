@@ -102,5 +102,25 @@ export function createStudyServer(provider: StudyProvider): McpServer {
     },
   );
 
+  server.tool(
+    "marmoset_list_courses",
+    "List Marmoset course links available to the locally authenticated student. This is read-only and never submits work.",
+    async () => asText(await provider.listMarmosetCourses()),
+  );
+
+  server.tool(
+    "marmoset_list_assignments",
+    "List Marmoset assignment/project links for a course URL returned by marmoset_list_courses. This is read-only.",
+    { course_url: z.string().url() },
+    async ({ course_url }) => asText(await provider.listMarmosetAssignments(course_url)),
+  );
+
+  server.tool(
+    "marmoset_get_submission_status",
+    "Read the status of a Marmoset assignment/project URL returned by marmoset_list_assignments. It reports only pending/tested/unknown status and never exposes source files, numeric marks, or submission controls.",
+    { assignment_url: z.string().url() },
+    async ({ assignment_url }) => asText(await provider.getMarmosetSubmissionStatus(assignment_url)),
+  );
+
   return server;
 }

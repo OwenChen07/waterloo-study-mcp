@@ -5,6 +5,8 @@ import {
   extractHtmlLinks,
   flattenContentToc,
   isWordDocument,
+  marmosetAssignmentLinks,
+  marmosetCourseLinks,
   nextCollectionPath,
   piazzaThreadText,
   readableContentText,
@@ -81,6 +83,20 @@ describe("LEARN collection handling", () => {
     expect(isWordDocument("application/octet-stream", 'attachment; filename="groups.docx"', "https://learn.example.edu/file")).toBe(true);
     expect(isWordDocument("application/octet-stream", null, "https://learn.example.edu/Groups%20Section%20004.docx")).toBe(true);
     expect(isWordDocument("application/octet-stream", 'attachment; filename="notes.docm"', "https://learn.example.edu/file")).toBe(false);
+  });
+
+  it("keeps only Marmoset-hosted course and assignment links", () => {
+    const html = [
+      '<a href="/course/cs246">CS 246 – Fall 2026</a>',
+      '<a href="/project/a1">Assignment 1</a>',
+      '<a href="https://example.com/">outside</a>',
+    ].join("");
+    expect(marmosetCourseLinks(html, "https://marmoset.student.cs.uwaterloo.ca/")).toEqual([
+      { text: "CS 246 – Fall 2026", url: "https://marmoset.student.cs.uwaterloo.ca/course/cs246" },
+    ]);
+    expect(marmosetAssignmentLinks(html, "https://marmoset.student.cs.uwaterloo.ca/course/cs246")).toEqual([
+      { text: "Assignment 1", url: "https://marmoset.student.cs.uwaterloo.ca/project/a1" },
+    ]);
   });
 
   it("includes the question, answers, and nested follow-ups in a Piazza thread", () => {

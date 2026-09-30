@@ -7,6 +7,7 @@ import type {
   UpcomingWork,
 } from "../domain.js";
 import type { LearnContentDocument, LearnContentTopic } from "../learn-content.js";
+import type { MarmosetAssignment, MarmosetCourse, MarmosetSubmissionStatus } from "../marmoset.js";
 import { getSessionCookieHeader } from "../auth/session-store.js";
 import { TimedAsyncCache } from "./timed-cache.js";
 import type { ProviderPerformanceStats, StudyProvider, StudySnapshot, UpcomingWorkOptions } from "./study-provider.js";
@@ -17,6 +18,8 @@ const LEARN_LP_VERSION = "1.62";
 const LEARN_LE_VERSION = "1.96";
 const PIAZZA_HOST = "piazza.com";
 const PIAZZA_BASE = `https://${PIAZZA_HOST}`;
+const MARMOSET_HOST = "marmoset.student.cs.uwaterloo.ca";
+const MARMOSET_BASE = `https://${MARMOSET_HOST}`;
 const require = createRequire(import.meta.url);
 
 type ExtractedWordDocument = { getBody(options?: { filterUnicode?: boolean }): string };
@@ -70,8 +73,9 @@ type PiazzaThread = PiazzaFeedItem & {
 };
 
 export class AuthenticationRequiredError extends Error {
-  constructor(service: "learn" | "piazza", detail?: string) {
-    super(`${service === "learn" ? "LEARN" : "Piazza"} session is unavailable or expired. Run \`npm run auth:${service}\` and try again.${detail ? ` ${detail}` : ""}`);
+  constructor(service: "learn" | "piazza" | "marmoset", detail?: string) {
+    const label = service === "learn" ? "LEARN" : service === "piazza" ? "Piazza" : "Marmoset";
+    super(`${label} session is unavailable or expired. Run \`npm run auth:${service}\` and try again.${detail ? ` ${detail}` : ""}`);
     this.name = "AuthenticationRequiredError";
   }
 }
@@ -265,6 +269,37 @@ export function resolvePiazzaCourseReference(courses: Course[], reference: strin
   throw new Error(`More than one Piazza course matches "${reference}". Call piazza_list_courses and use course_id instead.`);
 }
 
+type MarmosetLink = { text: string; url: string };
+
+export function extractMarmosetLinks(html: string, pageUrl: string): MarmosetLink[] {
+  const links: MarmosetLink[] = [];
+  const pattern = /<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(pattern)) {
+    try {
+      const url = new URL(match[2]!, pageUrl);
+      if (url.protocol !== "https:" || url.hostname !== MARMOSET_HOST) continue;
+      const text = plainText(match[3]);
+      if (!text || links.some((link) => link.url === url.toString() && link.text === text)) continue;
+      links.push({ text, url: url.toString() });
+    } catch {
+      // Ignore malformed, JavaScript, and external links.
+    }
+  }
+  return links;
+}
+
+export function marmosetCourseLinks(html: string, pageUrl: string): MarmosetLink[] {
+  return extractMarmosetLinks(html, pageUrl).filter((link) =>
+    /course|class/i.test(link.url) || /\b(?:cs|se|ece|math|stat)\s*\d{2,3}\b/i.test(link.text),
+  );
+}
+
+export function marmosetAssignmentLinks(html: string, pageUrl: string): MarmosetLink[] {
+  return extractMarmosetLinks(html, pageUrl).filter((link) =>
+    /project|assignment|problem/i.test(link.url) || /\b(?:a|q|p)\d+[a-z0-9-]*\b/i.test(link.text),
+  );
+}
+
 /**
  * Piazza represents a post as a tree: the question is the root and answers and
  * follow-ups are children.  The first history item alone is therefore not a
@@ -291,9 +326,10 @@ export class LiveStudyProvider implements StudyProvider {
   private readonly requestStats = {
     learn: { count: 0, totalMs: 0 },
     piazza: { count: 0, totalMs: 0 },
+    marmoset: { count: 0, totalMs: 0 },
   };
 
-  private recordRequest(service: "learn" | "piazza", startedAt: number): void {
+  private recordRequest(service: "learn" | "piazza" | "marmoset", startedAt: number): void {
     this.requestStats[service].count++;
     this.requestStats[service].totalMs += Math.round(performance.now() - startedAt);
   }
@@ -386,6 +422,31 @@ export class LiveStudyProvider implements StudyProvider {
     return payload.result as T;
     } finally {
       this.recordRequest("piazza", startedAt);
+    }
+  }
+
+  private async marmosetPage(path: string): Promise<{ html: string; url: string }> {
+    const startedAt = performance.now();
+    try {
+      const cookie = await getSessionCookieHeader("marmoset", MARMOSET_HOST).catch((error) => {
+        throw new AuthenticationRequiredError("marmoset", error instanceof Error ? error.message : undefined);
+      });
+      const url = new URL(path, MARMOSET_BASE);
+      if (url.protocol !== "https:" || url.hostname !== MARMOSET_HOST) {
+        throw new Error("Marmoset tools accept only links returned by Marmoset itself.");
+      }
+      const response = await fetch(url, {
+        headers: { Accept: "text/html", Cookie: cookie }, redirect: "manual", signal: AbortSignal.timeout(20_000),
+      });
+      if (response.status === 401 || response.status === 403 || response.status >= 300 && response.status < 400) {
+        throw new AuthenticationRequiredError("marmoset");
+      }
+      if (!response.ok || !(response.headers.get("content-type") ?? "").includes("html")) {
+        throw new Error(`Marmoset returned an unexpected response (${response.status}).`);
+      }
+      return { html: await response.text(), url: response.url };
+    } finally {
+      this.recordRequest("marmoset", startedAt);
     }
   }
 
@@ -485,6 +546,7 @@ export class LiveStudyProvider implements StudyProvider {
       requests: {
         learn: { ...this.requestStats.learn },
         piazza: { ...this.requestStats.piazza },
+        marmoset: { ...this.requestStats.marmoset },
       },
     };
   }
@@ -601,6 +663,36 @@ export class LiveStudyProvider implements StudyProvider {
       id: String(item.nr), courseId, folderIds: item.folders ?? [], subject: item.subject ?? "Untitled post",
       content: piazzaThreadText(item), createdAt: item.history?.[0]?.created ?? item.created ?? "",
       url: `${PIAZZA_BASE}/class/${courseId}/post/${item.nr}`,
+    };
+  }
+
+  async listMarmosetCourses(): Promise<MarmosetCourse[]> {
+    return this.cache.get("marmoset:courses", 120_000, async () => {
+      const page = await this.marmosetPage(MARMOSET_BASE);
+      return marmosetCourseLinks(page.html, page.url).map((link) => ({ id: link.url, name: link.text, url: link.url }));
+    });
+  }
+
+  async listMarmosetAssignments(courseUrl: string): Promise<MarmosetAssignment[]> {
+    return this.cache.get(`marmoset:assignments:${courseUrl}`, 120_000, async () => {
+      const page = await this.marmosetPage(courseUrl);
+      return marmosetAssignmentLinks(page.html, page.url).map((link) => ({
+        id: link.url, courseId: courseUrl, name: link.text, url: link.url,
+      }));
+    });
+  }
+
+  async getMarmosetSubmissionStatus(assignmentUrl: string): Promise<MarmosetSubmissionStatus> {
+    const page = await this.marmosetPage(assignmentUrl);
+    const text = plainText(page.html).toLowerCase();
+    const pending = /\b(?:pending|queued|testing|running)\b/.test(text);
+    const hasSubmission = /\b(?:submission|submitted|test result|passed|failed)\b/.test(text);
+    return {
+      assignmentId: assignmentUrl,
+      assignmentUrl,
+      state: pending ? "pending" : hasSubmission ? "tested" : "unknown",
+      hasSubmission,
+      note: "Read-only summary. It excludes source files, numeric marks, release-test actions, and submission controls.",
     };
   }
 }

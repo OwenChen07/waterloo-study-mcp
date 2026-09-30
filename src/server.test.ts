@@ -49,4 +49,16 @@ describe("createStudyServer", () => {
       expect.objectContaining({ id: "101", title: "Course Outline" }),
     ]);
   });
+
+  it("exposes only the read-only Marmoset discovery and status tools", async () => {
+    const courses = await callTool(client, "marmoset_list_courses", {});
+    expect(courses).toEqual([expect.objectContaining({ id: "cs-246" })]);
+    const assignments = await callTool(client, "marmoset_list_assignments", {
+      course_url: "https://marmoset.example.invalid/course/cs-246",
+    });
+    expect(assignments).toEqual([expect.objectContaining({ id: "a1" })]);
+    await expect(callTool(client, "marmoset_get_submission_status", {
+      assignment_url: "https://marmoset.example.invalid/project/a1",
+    })).resolves.toMatchObject({ state: "tested", hasSubmission: true });
+  });
 });
