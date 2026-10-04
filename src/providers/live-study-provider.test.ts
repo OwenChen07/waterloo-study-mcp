@@ -5,6 +5,7 @@ import {
   extractHtmlLinks,
   flattenContentToc,
   isWordDocument,
+  extractMarmosetLinks,
   marmosetAssignmentLinks,
   marmosetCourseLinks,
   nextCollectionPath,
@@ -96,6 +97,20 @@ describe("LEARN collection handling", () => {
     ]);
     expect(marmosetAssignmentLinks(html, "https://marmoset.student.cs.uwaterloo.ca/course/cs246")).toEqual([
       { text: "Assignment 1", url: "https://marmoset.student.cs.uwaterloo.ca/project/a1" },
+    ]);
+  });
+
+  it("drops insecure, scripted, empty, and duplicate Marmoset links", () => {
+    const page = "https://marmoset.student.cs.uwaterloo.ca/";
+    const html = [
+      '<a href="http://marmoset.student.cs.uwaterloo.ca/project/a1">Insecure</a>',
+      '<a href="javascript:void(0)">Scripted</a>',
+      "<a href='/project/a2'><b>Assignment</b> 2</a>",
+      '<a href="/project/a2"><b>Assignment</b> 2</a>',
+      '<a href="/project/a3"> <img src="x.png"> </a>',
+    ].join("");
+    expect(extractMarmosetLinks(html, page)).toEqual([
+      { text: "Assignment 2", url: "https://marmoset.student.cs.uwaterloo.ca/project/a2" },
     ]);
   });
 
