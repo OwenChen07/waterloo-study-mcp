@@ -23,6 +23,7 @@ const displayNames: Record<AuthService, string> = {
 const LEARN_ENROLLMENTS_URL = "https://learn.uwaterloo.ca/d2l/api/lp/1.62/enrollments/myenrollments/?orgUnitTypeId=3";
 const PIAZZA_CLASS_URL = "https://piazza.com/class";
 const MARMOSET_URL = "https://marmoset.student.cs.uwaterloo.ca/";
+const MARMOSET_COURSES_URL = "https://marmoset.student.cs.uwaterloo.ca/view/index.jsp";
 const AUTH_TIMEOUT_MS = 15 * 60_000;
 const AUTH_POLL_INTERVAL_MS = 1_000;
 
@@ -63,12 +64,12 @@ async function hasPiazzaSession(context: BrowserContext): Promise<boolean> {
 
 async function hasMarmosetSession(context: BrowserContext): Promise<boolean> {
   try {
-    const response = await context.request.get(MARMOSET_URL, { maxRedirects: 0, timeout: 5_000 });
+    const response = await context.request.get(MARMOSET_COURSES_URL, { maxRedirects: 0, timeout: 5_000 });
     if (!response.ok()) return false;
     const cookies = await context.cookies(MARMOSET_URL);
     const hasSessionCookie = cookies.some((cookie) => cookie.domain.includes("marmoset.student.cs.uwaterloo.ca"));
-    // Marmoset shows the "as" identity-selection link only after WatIAM authentication.
-    return hasSessionCookie && /<a\b[^>]*\bhref=["'][^"']*(?:\/|=)as(?:[/?"']|$)/i.test(await response.text());
+    // /view/index.jsp is reached only after clicking "as"; it shows a Logout link once fully signed in.
+    return hasSessionCookie && /<a\b[^>]*>\s*log\s*out\s*<|<a\b[^>]*\bhref=["'][^"']*logout/i.test(await response.text());
   } catch {
     return false;
   }
