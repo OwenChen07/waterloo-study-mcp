@@ -88,4 +88,31 @@ describe("session-store", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("distinguishes a verified session, a service error, and an unreachable service", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "waterloo-study-mcp-"));
+    vi.stubEnv("STUDY_MCP_STATE_DIR", directory);
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    try {
+      await writeFile(getSessionPath("piazza"), JSON.stringify({
+        cookies: [{ name: "session", value: "keep-private", domain: "piazza.com", expires: -1 }],
+      }));
+
+      fetchMock.mockResolvedValueOnce(new Response("", { status: 200 }));
+      await expect(verifySession("piazza")).resolves.toEqual({ service: "piazza", usable: true });
+
+      fetchMock.mockResolvedValueOnce(new Response("", { status: 503 }));
+      await expect(verifySession("piazza")).resolves.toEqual({
+        service: "piazza", usable: false, reason: "Service returned 503.",
+      });
+
+      fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
+      await expect(verifySession("piazza")).resolves.toEqual({
+        service: "piazza", usable: false, reason: "Could not reach the service to verify this session.",
+      });
+    } finally {
+      fetchMock.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
