@@ -51,4 +51,27 @@ describe("TimedAsyncCache", () => {
     await expect(cache.get("courses", 100, newLoad)).resolves.toBe("fresh");
     expect(newLoad).toHaveBeenCalledOnce();
   });
+
+  it("treats an entry as expired exactly at its TTL boundary", async () => {
+    let now = 1_000;
+    const cache = new TimedAsyncCache(() => now);
+    const load = vi.fn(async () => "value");
+    await cache.get("courses", 100, load);
+
+    now += 99;
+    await cache.get("courses", 100, load);
+    expect(load).toHaveBeenCalledOnce();
+
+    now += 1;
+    await cache.get("courses", 100, load);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a stats snapshot that later cache activity does not mutate", async () => {
+    const cache = new TimedAsyncCache();
+    const snapshot = cache.getStats();
+    await cache.get("a", 100, async () => "value");
+    expect(snapshot).toEqual({ hits: 0, misses: 0 });
+    expect(cache.getStats()).toEqual({ hits: 0, misses: 1 });
+  });
 });
